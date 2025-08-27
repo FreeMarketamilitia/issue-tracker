@@ -227,6 +227,7 @@
           <div class="switch" role="tablist" aria-label="View switch">
             <button id="viewLog" class="pill active" role="tab" aria-selected="true">Log</button>
             <button id="viewAnalytics" class="pill" role="tab" aria-selected="false">Analytics</button>
+            <button id="viewBathroom" class="pill" role="tab" aria-selected="false">Bathroom</button>
           </div>
           <div class="search" title="Search students">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 21l-4.35-4.35M10.5 18a 7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -291,6 +292,9 @@
 
     <!-- ANALYTICS VIEW (included from analytics.html) -->
     <?!= HtmlService.createHtmlOutputFromFile('analytics').getContent(); ?>
+
+    <!-- BATHROOM VIEW (included from bathroom.html) -->
+    <?!= HtmlService.createHtmlOutputFromFile('bathroom').getContent(); ?>
 
   </div>
 
@@ -408,9 +412,12 @@
     currentView = view;
     $('#viewLog').classList.toggle('active', view==='log');
     $('#viewAnalytics').classList.toggle('active', view==='analytics');
+    $('#viewBathroom').classList.toggle('active', view==='bathroom'); // New line
     $('#mainLog').classList.toggle('active', view==='log');
     $('#mainAnalytics').classList.toggle('active', view==='analytics');
+    $('#mainBathroom').classList.toggle('active', view==='bathroom'); // New line
     if (view === 'analytics') renderAnalytics(); // use local COUNTS
+    // No specific render function for bathroom yet, but it will be loaded.
   }
 
   // ==================== Period Tabs & Switching ====================
@@ -792,6 +799,7 @@
   $('#clearNote').addEventListener('click', ()=> $('#note').value='');
   $('#viewLog').addEventListener('click', ()=> setView('log'));
   $('#viewAnalytics').addEventListener('click', ()=> setView('analytics'));
+  $('#viewBathroom').addEventListener('click', ()=> setView('bathroom'));
 
   // Allow close when running in a modal dialog
   try {
