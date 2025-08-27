@@ -942,7 +942,10 @@ async function getBathroomAnalytics() {
 }
 
 async function getBathroomStatus(period) {
-  const ss = await _getSpreadsheet_();
+  const ss = await _getSpreadsheetOrNull_();
+  if (!ss) {
+    return { out: [], in: [] };
+  }
   const p = String(period || '');
   const ssId = ss.getId();
   const ver = await _getVersion_(ssId);
