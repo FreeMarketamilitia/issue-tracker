@@ -416,7 +416,12 @@
     $('#mainLog').classList.toggle('active', view==='log');
     $('#mainAnalytics').classList.toggle('active', view==='analytics');
     $('#mainBathroom').classList.toggle('active', view==='bathroom'); // New line
-    if (view === 'analytics') renderAnalytics(); // use local COUNTS
+    if (view === 'analytics') {
+      renderAnalytics(); // use local COUNTS
+      if (typeof renderBathroomAnalytics === 'function') {
+        renderBathroomAnalytics();
+      }
+    }
     // No specific render function for bathroom yet, but it will be loaded.
   }
 
