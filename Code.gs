@@ -129,6 +129,28 @@ function _isIdTrashed_(id) {
   }
 }
 
+function _clearCachesFor_(ssId) {
+  if (!ssId) return;
+  try {
+    const cache = CacheService.getUserCache();
+    const ver = _getVersion_(ssId);
+    const keys = [
+      APP.CACHE_PREFIX_DATA + ssId + ':v' + ver,
+      APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver,
+      APP.CACHE_PREFIX_COUNTS + ssId + '::v' + ver,
+      APP.CACHE_PREFIX_BATH_STATUS + ssId + '::v' + ver,
+    ];
+    for (let p = 0; p <= 10; p++) {
+      keys.push(APP.CACHE_PREFIX_COUNTS + ssId + ':' + p + ':v' + ver);
+      keys.push(APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + ver);
+    }
+    cache.removeAll(keys);
+  } catch (e) {}
+  try {
+    _getScriptProps().deleteProperty(APP.PROP_PREFIX_VER + ssId);
+  } catch (e) {}
+}
+
 function _getSpreadsheetOrNull_() {
   const remembered = _getStoredSsId();
   if (remembered) {
@@ -137,14 +159,18 @@ function _getSpreadsheetOrNull_() {
         return SpreadsheetApp.openById(remembered);
       }
     } catch (e) {}
+    _clearCachesFor_(remembered);
     _clearStoredSsId();
   }
   // Container-bound fallback: remember it
   try {
     const active = SpreadsheetApp.getActiveSpreadsheet();
-    if (active && !_isIdTrashed_(active.getId())) {
-      _setStoredSsId(active.getId());
-      return active;
+    if (active) {
+      if (!_isIdTrashed_(active.getId())) {
+        _setStoredSsId(active.getId());
+        return active;
+      }
+      _clearCachesFor_(active.getId());
     }
   } catch (e) {}
   return null;
