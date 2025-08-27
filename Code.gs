@@ -125,8 +125,42 @@ function _isIdTrashed_(id) {
     const f = DriveApp.getFileById(id);
     return f.isTrashed();
   } catch (e) {
-    return false;
+    return true; // treat unknown or inaccessible files as trashed
   }
+}
+
+function _clearCachesFor_(ssId) {
+  if (!ssId) return;
+  try {
+    const cache = CacheService.getUserCache();
+    const ver = _getVersion_(ssId);
+    const keys = [];
+    for (let v = 0; v <= ver; v++) {
+      keys.push(APP.CACHE_PREFIX_DATA + ssId + ':v' + v);
+      keys.push(APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + v);
+      keys.push(APP.CACHE_PREFIX_COUNTS + ssId + '::v' + v);
+      keys.push(APP.CACHE_PREFIX_BATH_STATUS + ssId + '::v' + v);
+      for (let p = 0; p <= 10; p++) {
+        keys.push(APP.CACHE_PREFIX_COUNTS + ssId + ':' + p + ':v' + v);
+        keys.push(APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + v);
+      }
+    }
+    while (keys.length) {
+      cache.removeAll(keys.splice(0, 100));
+    }
+  } catch (e) {}
+  try {
+    _getScriptProps().deleteProperty(APP.PROP_PREFIX_VER + ssId);
+  } catch (e) {}
+}
+
+function _clearAllCaches_() {
+  try {
+    const props = _getScriptProps().getProperties();
+    Object.keys(props)
+      .filter((k) => k.startsWith(APP.PROP_PREFIX_VER))
+      .forEach((k) => _clearCachesFor_(k.substring(APP.PROP_PREFIX_VER.length)));
+  } catch (e) {}
 }
 
 function _getSpreadsheetOrNull_() {
@@ -137,13 +171,18 @@ function _getSpreadsheetOrNull_() {
         return SpreadsheetApp.openById(remembered);
       }
     } catch (e) {}
+    _clearCachesFor_(remembered);
+    _clearStoredSsId();
   }
   // Container-bound fallback: remember it
   try {
     const active = SpreadsheetApp.getActiveSpreadsheet();
-    if (active && !_isIdTrashed_(active.getId())) {
-      _setStoredSsId(active.getId());
-      return active;
+    if (active) {
+      if (!_isIdTrashed_(active.getId())) {
+        _setStoredSsId(active.getId());
+        return active;
+      }
+      _clearCachesFor_(active.getId());
     }
   } catch (e) {}
   return null;
@@ -270,6 +309,7 @@ function clearAllLogs() {
  * ========================= */
 
 function onOpen() {
+  _clearAllCaches_();
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureBathroomTrackerSetup_(ss);

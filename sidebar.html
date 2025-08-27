@@ -103,7 +103,7 @@
     }
     .chip-xs.active{ background:var(--accent); border-color:transparent; color:#fff; box-shadow:0 4px 18px rgba(79,140,255,.35); }
 
-    .list{max-height:calc(100vh - 260px); overflow:auto; padding:10px; transition:all .15s ease;}
+    .list{max-height:calc(100vh - 260px); max-height:calc(100dvh - 260px); overflow:auto; padding:10px; transition:all .15s ease;}
     .filters{display:flex; gap:8px; overflow:auto; padding:10px 12px 0; border-bottom:1px dashed var(--border);}
     .filter-chip{background:#0f1521; border:1px solid var(--chip-border); color:var(--text); padding:6px 10px; border-radius:999px; cursor:pointer; white-space:nowrap; font-size:12px;}
     .filter-chip.active{background:var(--accent); color:#fff; border-color:transparent}
@@ -143,7 +143,7 @@
     }
 
     /* ==== GRID MODE ==== */
-    .list.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:12px; max-height:calc(100vh - 260px); overflow:auto; }
+    .list.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:12px; max-height:calc(100vh - 260px); max-height:calc(100dvh - 260px); overflow:auto; }
     .list.grid .student-item{
       grid-template-columns: 1fr; padding:12px; border:1px solid var(--border); background:#0f1521;
     }
