@@ -38,39 +38,45 @@ const CONFIG = {
  * Robust property storage (User + Script)
  * ========================= */
 
-function _getUserProps()    { return PropertiesService.getUserProperties(); }
-function _getScriptProps()  { return PropertiesService.getScriptProperties(); }
+async function _getUserProps()    { return PropertiesService.getUserProperties(); }
+async function _getScriptProps()  { return PropertiesService.getScriptProperties(); }
 
-function _getStoredSsId() {
-  const u = _getUserProps().getProperty(APP.PROP_KEY_SS_ID);
-  if (u) return u;
-  const s = _getScriptProps().getProperty(APP.PROP_KEY_SS_ID);
-  return s || null;
+async function _getStoredSsId() {
+  const u = await _getUserProps();
+  const uId = u.getProperty(APP.PROP_KEY_SS_ID);
+  if (uId) return uId;
+  const s = await _getScriptProps();
+  const sId = s.getProperty(APP.PROP_KEY_SS_ID);
+  return sId || null;
 }
-function _setStoredSsId(ssId) {
+async function _setStoredSsId(ssId) {
   if (!ssId) return;
-  _getUserProps().setProperty(APP.PROP_KEY_SS_ID, ssId);
-  _getScriptProps().setProperty(APP.PROP_KEY_SS_ID, ssId);
+  const up = await _getUserProps();
+  up.setProperty(APP.PROP_KEY_SS_ID, ssId);
+  const sp = await _getScriptProps();
+  sp.setProperty(APP.PROP_KEY_SS_ID, ssId);
 }
-function _clearStoredSsId() {
-  _getUserProps().deleteProperty(APP.PROP_KEY_SS_ID);
-  _getScriptProps().deleteProperty(APP.PROP_KEY_SS_ID);
+async function _clearStoredSsId() {
+  const up = await _getUserProps();
+  up.deleteProperty(APP.PROP_KEY_SS_ID);
+  const sp = await _getScriptProps();
+  sp.deleteProperty(APP.PROP_KEY_SS_ID);
 }
 
 /* =========================
  * Versioning for cache invalidation
  * ========================= */
 
-function _getVersion_(ssId) {
+async function _getVersion_(ssId) {
   if (!ssId) return 0;
-  const sp = _getScriptProps();
+  const sp = await _getScriptProps();
   const raw = sp.getProperty(APP.PROP_PREFIX_VER + ssId);
   return raw ? parseInt(raw, 10) || 0 : 0;
 }
-function _bumpVersion_(ssId) {
+async function _bumpVersion_(ssId) {
   if (!ssId) return;
-  const sp = _getScriptProps();
-  const current = _getVersion_(ssId);
+  const sp = await _getScriptProps();
+  const current = await _getVersion_(ssId);
   sp.setProperty(APP.PROP_PREFIX_VER + ssId, String(current + 1));
 }
 
@@ -78,7 +84,7 @@ function _bumpVersion_(ssId) {
  * Cache helpers
  * ========================= */
 
-function _cacheGet_(key) {
+async function _cacheGet_(key) {
   try {
     const cache = CacheService.getUserCache();
     const val = cache.get(key);
@@ -87,7 +93,7 @@ function _cacheGet_(key) {
     return null;
   }
 }
-function _cachePut_(key, obj, ttlSec) {
+async function _cachePut_(key, obj, ttlSec) {
   try {
     const cache = CacheService.getUserCache();
     cache.put(key, JSON.stringify(obj), ttlSec);
@@ -98,7 +104,7 @@ function _cachePut_(key, obj, ttlSec) {
  * Safe lock acquisition for web app + container-bound
  * ========================= */
 
-function _acquireLock_(ms) {
+async function _acquireLock_(ms) {
   const timeout = Math.max(1, ms || 30000);
 
   // Try document lock first (works in container-bound scripts).
@@ -120,20 +126,20 @@ function _acquireLock_(ms) {
  * Spreadsheet attach / resolve
  * ========================= */
 
-function _isIdTrashed_(id) {
+async function _isIdTrashed_(id) {
   try {
     const f = DriveApp.getFileById(id);
     return f.isTrashed();
   } catch (e) {
-    return true; // treat unknown or inaccessible files as trashed
+    return null; // unknown or inaccessible
   }
 }
 
-function _clearCachesFor_(ssId) {
+async function _clearCachesFor_(ssId) {
   if (!ssId) return;
   try {
     const cache = CacheService.getUserCache();
-    const ver = _getVersion_(ssId);
+    const ver = await _getVersion_(ssId);
     const keys = [];
     for (let v = 0; v <= ver; v++) {
       keys.push(APP.CACHE_PREFIX_DATA + ssId + ':v' + v);
@@ -150,65 +156,86 @@ function _clearCachesFor_(ssId) {
     }
   } catch (e) {}
   try {
-    _getScriptProps().deleteProperty(APP.PROP_PREFIX_VER + ssId);
+    const sp = await _getScriptProps();
+    sp.deleteProperty(APP.PROP_PREFIX_VER + ssId);
   } catch (e) {}
 }
 
-function _clearAllCaches_() {
+async function _clearAllCaches_() {
   try {
-    const props = _getScriptProps().getProperties();
-    Object.keys(props)
-      .filter((k) => k.startsWith(APP.PROP_PREFIX_VER))
-      .forEach((k) => _clearCachesFor_(k.substring(APP.PROP_PREFIX_VER.length)));
+    const sp = await _getScriptProps();
+    const props = sp.getProperties();
+    for (const k of Object.keys(props)) {
+      if (k.startsWith(APP.PROP_PREFIX_VER)) {
+        await _clearCachesFor_(k.substring(APP.PROP_PREFIX_VER.length));
+      }
+    }
   } catch (e) {}
 }
 
-function _getSpreadsheetOrNull_() {
-  const remembered = _getStoredSsId();
+async function _getSpreadsheetOrNull_() {
+  const remembered = await _getStoredSsId();
   if (remembered) {
-    try {
-      if (!_isIdTrashed_(remembered)) {
+    const trashed = await _isIdTrashed_(remembered);
+    if (trashed === false) {
+      try {
         return SpreadsheetApp.openById(remembered);
-      }
-    } catch (e) {}
-    _clearCachesFor_(remembered);
-    _clearStoredSsId();
+      } catch (e) {}
+    } else if (trashed === true) {
+      await _clearCachesFor_(remembered);
+      await _clearStoredSsId();
+    }
   }
   // Container-bound fallback: remember it
   try {
     const active = SpreadsheetApp.getActiveSpreadsheet();
     if (active) {
-      if (!_isIdTrashed_(active.getId())) {
-        _setStoredSsId(active.getId());
+      const activeTrashed = await _isIdTrashed_(active.getId());
+      if (activeTrashed === false) {
+        await _setStoredSsId(active.getId());
         return active;
+      } else if (activeTrashed === true) {
+        await _clearCachesFor_(active.getId());
       }
-      _clearCachesFor_(active.getId());
     }
   } catch (e) {}
   return null;
 }
 
-function _getSpreadsheet_() {
-  const ss = _getSpreadsheetOrNull_();
+async function _getSpreadsheet_() {
+  const ss = await _getSpreadsheetOrNull_();
   if (!ss) {
     throw new Error('No data spreadsheet is attached yet. Use “Build Sheets” first.');
   }
   return ss;
 }
 
-function _createSpreadsheet_(name) {
+async function _createSpreadsheet_(name) {
   const ss = SpreadsheetApp.create(name || APP.DEFAULT_SS_NAME);
-  _setStoredSsId(ss.getId());
+  await _setStoredSsId(ss.getId());
   // any new build invalidates caches
-  _bumpVersion_(ss.getId());
+  await _bumpVersion_(ss.getId());
   return ss;
+}
+
+async function findSpreadsheet(name) {
+  const files = DriveApp.getFilesByName(name || APP.DEFAULT_SS_NAME);
+  while (files.hasNext()) {
+    const f = files.next();
+    if (!f.isTrashed()) {
+      const ssId = f.getId();
+      await _setStoredSsId(ssId);
+      return { ok: true, ssId, ssUrl: f.getUrl() };
+    }
+  }
+  return { ok: false, message: 'No spreadsheet found.' };
 }
 
 /* =========================
  * App state & builder
  * ========================= */
 
-function getAppState() {
+async function getAppState() {
   const state = {
     attached: false,
     ssId: null,
@@ -217,7 +244,7 @@ function getAppState() {
     hasData: { roster:false, issues:false, log:false }
   };
 
-  const ss = _getSpreadsheetOrNull_();
+  const ss = await _getSpreadsheetOrNull_();
   if (!ss) return state;
 
   state.attached = true;
@@ -225,7 +252,7 @@ function getAppState() {
   state.ssUrl = ss.getUrl();
 
   // ensure new bathroom-tracking fields/sheets exist
-  ensureBathroomTrackerSetup_(ss);
+  await ensureBathroomTrackerSetup_(ss);
 
   const roster = ss.getSheetByName(CONFIG.ROSTER_SHEET);
   const issues = ss.getSheetByName(CONFIG.ISSUES_SHEET);
@@ -244,41 +271,41 @@ function getAppState() {
   return state;
 }
 
-function buildSheets(opts) {
+async function buildSheets(opts) {
   const seed = !!(opts && opts.seed !== false); // default true
   const name = (opts && opts.name) || APP.DEFAULT_SS_NAME;
 
-  let ss = _getSpreadsheetOrNull_();
+  let ss = await _getSpreadsheetOrNull_();
   if (!ss) {
-    ss = _createSpreadsheet_(name);
+    ss = await _createSpreadsheet_(name);
   }
 
-  ensureRoster_(ss, seed);
-  ensureIssues_(ss, seed);
-  ensureLog_(ss);
-  ensureIssueCountsPivot_(ss);
-  ensureBathroomTrackerSetup_(ss);
+  await ensureRoster_(ss, seed);
+  await ensureIssues_(ss, seed);
+  await ensureLog_(ss);
+  await ensureIssueCountsPivot_(ss);
+  await ensureBathroomTrackerSetup_(ss);
 
   // bump version to invalidate caches (new build)
-  _bumpVersion_(ss.getId());
+  await _bumpVersion_(ss.getId());
 
   return { ok:true, message:'Sheets are ready.', ssId:ss.getId(), ssUrl:ss.getUrl() };
 }
 
-function clearAllLogs() {
+async function clearAllLogs() {
   try {
-    let ss = _getSpreadsheetOrNull_();
+    let ss = await _getSpreadsheetOrNull_();
     if (!ss) {
-      ss = _createSpreadsheet_(APP.DEFAULT_SS_NAME);
+      ss = await _createSpreadsheet_(APP.DEFAULT_SS_NAME);
     }
 
     // Ensure sheets exist (created if missing)
-    const log = getSheetByName(ss, CONFIG.LOG_SHEET,
+    const log = await getSheetByName(ss, CONFIG.LOG_SHEET,
       ['Timestamp','Student','Period','Issue','Notes']);
-    const bath = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET,
+    const bath = await getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET,
       ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
 
-    const lock = _acquireLock_(30000);
+    const lock = await _acquireLock_(30000);
     try {
       const lastRow = log.getLastRow();
       if (lastRow > 1) {
@@ -293,8 +320,8 @@ function clearAllLogs() {
       const counts = ss.getSheetByName(CONFIG.COUNTS_SHEET);
       if (counts) counts.clear();
       SpreadsheetApp.flush();
-      ensureIssueCountsPivot_(ss); // rebuild analytics sheet
-      _bumpVersion_(ss.getId()); // invalidate caches
+      await ensureIssueCountsPivot_(ss); // rebuild analytics sheet
+      await _bumpVersion_(ss.getId()); // invalidate caches
       return { ok:true, message:'All logs cleared.' };
     } finally {
       try { lock.releaseLock(); } catch (_) {}
@@ -308,11 +335,11 @@ function clearAllLogs() {
  * UI menu (container-bound)
  * ========================= */
 
-function onOpen() {
-  _clearAllCaches_();
+async function onOpen() {
+  await _clearAllCaches_();
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    ensureBathroomTrackerSetup_(ss);
+    await ensureBathroomTrackerSetup_(ss);
     SpreadsheetApp.getUi()
       .createMenu('Issue Logger')
       .addItem('Initialize Tracker (build tabs)', 'initializeTracker')
@@ -326,28 +353,28 @@ function onOpen() {
   }
 }
 
-function initializeTracker() {
+async function initializeTracker() {
   try {
-    const ss = _getSpreadsheet_();
-    ensureRoster_(ss, true);
-    ensureIssues_(ss, true);
-    ensureLog_(ss);
-    ensureIssueCountsPivot_(ss);
-    ensureBathroomTrackerSetup_(ss);
-    _bumpVersion_(ss.getId()); // invalidate caches
+    const ss = await _getSpreadsheet_();
+    await ensureRoster_(ss, true);
+    await ensureIssues_(ss, true);
+    await ensureLog_(ss);
+    await ensureIssueCountsPivot_(ss);
+    await ensureBathroomTrackerSetup_(ss);
+    await _bumpVersion_(ss.getId()); // invalidate caches
     SpreadsheetApp.getUi().alert('Issue Logger is ready.\nUse the menu to open Sidebar / Popup / Full Screen.');
   } catch (e) {
     try { SpreadsheetApp.getUi().alert(e.message); } catch (_) {}
   }
 }
 
-function openLoggerSidebar() {
+async function openLoggerSidebar() {
   const html = HtmlService.createTemplateFromFile('sidebar').evaluate()
     .setTitle('Issue Logger')
     .setSandboxMode(HtmlService.SandboxMode.IFRAME);
   try { SpreadsheetApp.getUi().showSidebar(html); } catch (e) {}
 }
-function openLoggerPopup() {
+async function openLoggerPopup() {
   const html = HtmlService.createTemplateFromFile('sidebar').evaluate()
     .setSandboxMode(HtmlService.SandboxMode.IFRAME)
     .setWidth(CONFIG.POPUP_WIDTH)
@@ -360,7 +387,7 @@ function doGet() {
     .setTitle('Issue Logger')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
-function openFullScreen() {
+async function openFullScreen() {
   const url = ScriptApp.getService().getUrl();
   if (!url) {
     try {
@@ -382,8 +409,8 @@ function openFullScreen() {
  * Idempotent sheet creators
  * ========================= */
 
-function ensureRoster_(ss, seed) {
-  ss = ss || _getSpreadsheet_();
+async function ensureRoster_(ss, seed) {
+  ss = ss || await _getSpreadsheet_();
   let sh = ss.getSheetByName(CONFIG.ROSTER_SHEET);
   if (!sh) sh = ss.insertSheet(CONFIG.ROSTER_SHEET);
 
@@ -404,8 +431,8 @@ function ensureRoster_(ss, seed) {
   return sh;
 }
 
-function ensureIssues_(ss, seed) {
-  ss = ss || _getSpreadsheet_();
+async function ensureIssues_(ss, seed) {
+  ss = ss || await _getSpreadsheet_();
   let sh = ss.getSheetByName(CONFIG.ISSUES_SHEET);
   if (!sh) sh = ss.insertSheet(CONFIG.ISSUES_SHEET);
 
@@ -426,8 +453,8 @@ function ensureIssues_(ss, seed) {
   return sh;
 }
 
-function ensureLog_(ss) {
-  ss = ss || _getSpreadsheet_();
+async function ensureLog_(ss) {
+  ss = ss || await _getSpreadsheet_();
   let sh = ss.getSheetByName(CONFIG.LOG_SHEET);
   if (!sh) {
     sh = ss.insertSheet(CONFIG.LOG_SHEET);
@@ -448,8 +475,8 @@ function ensureLog_(ss) {
   return sh;
 }
 
-function ensureIssueCountsPivot_(ss) {
-  ss = ss || _getSpreadsheet_();
+async function ensureIssueCountsPivot_(ss) {
+  ss = ss || await _getSpreadsheet_();
   let sh = ss.getSheetByName(CONFIG.COUNTS_SHEET);
   if (!sh) sh = ss.insertSheet(CONFIG.COUNTS_SHEET);
   sh.clear();
@@ -467,19 +494,19 @@ function ensureIssueCountsPivot_(ss) {
  * Data fetchers (CACHED)
  * ========================= */
 
-function getData() {
-  const ss = _getSpreadsheetOrNull_();
+async function getData() {
+  const ss = await _getSpreadsheetOrNull_();
   if (!ss) return { periods: [], perMap: {}, issues: [] };
 
   const ssId = ss.getId();
-  const ver = _getVersion_(ssId);
+  const ver = await _getVersion_(ssId);
   const cacheKey = APP.CACHE_PREFIX_DATA + ssId + ':v' + ver;
 
-  const cached = _cacheGet_(cacheKey);
+  const cached = await _cacheGet_(cacheKey);
   if (cached) return cached;
 
-  const rSh = ensureRoster_(ss, false);
-  const iSh = ensureIssues_(ss, false);
+  const rSh = await ensureRoster_(ss, false);
+  const iSh = await ensureIssues_(ss, false);
 
   const rLast = rSh.getLastRow();
   const iLast = iSh.getLastRow();
@@ -510,7 +537,7 @@ function getData() {
   }
 
   const result = { periods, perMap, issues };
-  _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_DATA);
+  await _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_DATA);
   return result;
 }
 
@@ -518,18 +545,18 @@ function getData() {
  * Counts for a selected Period (CACHED per period).
  * Reads columns B: Student, C: Period, D: Issue only once, tally in memory.
  */
-function getCountsSnapshot(period) {
-  const ss = _getSpreadsheetOrNull_();
+async function getCountsSnapshot(period) {
+  const ss = await _getSpreadsheetOrNull_();
   if (!ss) {
     return { issues: [], rows: [], totalsByIssue: [], totalsByStudent: [], totalLogs: 0, zeroStudents: 0, issueVariety: 0 };
   }
 
   const p = String(period || '');
   const ssId = ss.getId();
-  const ver = _getVersion_(ssId);
+  const ver = await _getVersion_(ssId);
   const cacheKey = APP.CACHE_PREFIX_COUNTS + ssId + ':' + p + ':v' + ver;
 
-  const cached = _cacheGet_(cacheKey);
+  const cached = await _cacheGet_(cacheKey);
   if (cached) return cached;
 
   const rosterSh = ss.getSheetByName(CONFIG.ROSTER_SHEET);
@@ -562,7 +589,7 @@ function getCountsSnapshot(period) {
       totalsByStudent: namesInPeriod.map(n=>({student:n, sum:0})),
       totalLogs: 0, zeroStudents: namesInPeriod.length, issueVariety: 0
     };
-    _cachePut_(cacheKey, emptyResult, CONFIG.CACHE_TTL_COUNTS);
+    await _cachePut_(cacheKey, emptyResult, CONFIG.CACHE_TTL_COUNTS);
     return emptyResult;
   }
 
@@ -606,7 +633,7 @@ function getCountsSnapshot(period) {
   const issueVariety = totalsByIssue.filter(t => t.sum > 0).length;
 
   const result = { issues, rows, totalsByIssue, totalsByStudent, totalLogs, zeroStudents, issueVariety };
-  _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_COUNTS);
+  await _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_COUNTS);
   return result;
 }
 
@@ -614,16 +641,16 @@ function getCountsSnapshot(period) {
  * Logging & Undo (invalidate cache via versioning)
  * ========================= */
 
-function logEntries(payload) {
+async function logEntries(payload) {
   try {
     const entries = (payload && payload.entries) ? payload.entries : [];
     if (!entries.length) return { ok:false, message:'No entries.' };
 
-    const ss = _getSpreadsheet_();
-    const log = ss.getSheetByName(CONFIG.LOG_SHEET) || ensureLog_(ss);
+    const ss = await _getSpreadsheet_();
+    const log = ss.getSheetByName(CONFIG.LOG_SHEET) || await ensureLog_(ss);
 
     // Build Name -> Period map once per call
-    const rosterSh = ss.getSheetByName(CONFIG.ROSTER_SHEET) || ensureRoster_(ss, false);
+    const rosterSh = ss.getSheetByName(CONFIG.ROSTER_SHEET) || await ensureRoster_(ss, false);
     const rLast = rosterSh.getLastRow();
     const rVals = rLast >= 2 ? rosterSh.getRange(2,1,rLast-1,2).getValues() : [];
     const nameToPeriod = new Map();
@@ -633,7 +660,7 @@ function logEntries(payload) {
       if (name) nameToPeriod.set(name, per);
     }
 
-    const lock = _acquireLock_(30000);
+    const lock = await _acquireLock_(30000);
     try {
       const now = new Date();
       const rows = entries.map(e => {
@@ -651,7 +678,7 @@ function logEntries(payload) {
       log.getRange(startRow, 1, rows.length, 5).setValues(rows);
       SpreadsheetApp.flush();
       // bump version -> invalidates caches (counts and data)
-      _bumpVersion_(ss.getId());
+      await _bumpVersion_(ss.getId());
     } finally {
       try { lock.releaseLock(); } catch (_) {}
     }
@@ -661,17 +688,17 @@ function logEntries(payload) {
   }
 }
 
-function deleteLastEntry(payload) {
+async function deleteLastEntry(payload) {
   try {
     const student = String(payload && payload.student || '').trim();
     const issue   = String(payload && payload.issue || '').trim();
     const period  = String(payload && payload.period || '').trim();
     if (!student || !issue) return { ok:false, message:'Missing student or issue.' };
 
-    const ss = _getSpreadsheet_();
-    const log = ss.getSheetByName(CONFIG.LOG_SHEET) || ensureLog_(ss);
+    const ss = await _getSpreadsheet_();
+    const log = ss.getSheetByName(CONFIG.LOG_SHEET) || await ensureLog_(ss);
 
-    const lock = _acquireLock_(30000);
+    const lock = await _acquireLock_(30000);
     try {
       const lastRow = log.getLastRow();
       if (lastRow < 2) return { ok:false, message:'No logs to undo.' };
@@ -688,7 +715,7 @@ function deleteLastEntry(payload) {
           const sheetRow = 2 + i;
           log.deleteRow(sheetRow);
           SpreadsheetApp.flush();
-          _bumpVersion_(ss.getId()); // invalidate caches
+          await _bumpVersion_(ss.getId()); // invalidate caches
           return { ok:true, message:'Deleted last entry.', row: sheetRow };
         }
       }
@@ -705,12 +732,12 @@ function deleteLastEntry(payload) {
  * Diagnostics
  * ========================= */
 
-function pingWrite() {
+async function pingWrite() {
   try {
-    const ss = _getSpreadsheet_();
-    const log = ss.getSheetByName(CONFIG.LOG_SHEET) || ensureLog_(ss);
+    const ss = await _getSpreadsheet_();
+    const log = ss.getSheetByName(CONFIG.LOG_SHEET) || await ensureLog_(ss);
 
-    const lock = _acquireLock_(5000);
+    const lock = await _acquireLock_(5000);
     try {
       const cell = log.getRange('A1');
       const prev = cell.getNote();
@@ -729,7 +756,7 @@ function pingWrite() {
  * Bathroom Tracker
  * ========================= */
 
-function getSheetByName(ss, name, headers) {
+async function getSheetByName(ss, name, headers) {
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
     sheet = ss.insertSheet(name);
@@ -741,18 +768,18 @@ function getSheetByName(ss, name, headers) {
   return sheet;
 }
 
-function addStudentIdColumnToRoster(ss) {
-  ss = ss || _getSpreadsheet_();
-  const rosterSheet = ensureRoster_(ss);
+async function addStudentIdColumnToRoster(ss) {
+  ss = ss || await _getSpreadsheet_();
+  const rosterSheet = await ensureRoster_(ss);
   const headers = rosterSheet.getRange(1, 1, 1, rosterSheet.getLastColumn()).getValues()[0];
   if (headers.indexOf('Student ID') === -1) {
     rosterSheet.getRange(1, headers.length + 1).setValue('Student ID');
   }
 }
 
-function getBathroomBreakLimit(ss) {
-  ss = ss || _getSpreadsheet_();
-  const settingsSheet = getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
+async function getBathroomBreakLimit(ss) {
+  ss = ss || await _getSpreadsheet_();
+  const settingsSheet = await getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
   const data = settingsSheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === 'Bathroom Break Limit') {
@@ -763,25 +790,25 @@ function getBathroomBreakLimit(ss) {
   return 3;
 }
 
-function ensureBathroomTrackerSetup_(ss) {
-  ss = ss || _getSpreadsheet_();
-  addStudentIdColumnToRoster(ss);
-  const logSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
+async function ensureBathroomTrackerSetup_(ss) {
+  ss = ss || await _getSpreadsheet_();
+  await addStudentIdColumnToRoster(ss);
+  const logSheet = await getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
   const headers = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0];
   if (headers.indexOf('Period') === -1) {
     logSheet.insertColumnAfter(3);
     logSheet.getRange(1, 4).setValue('Period');
   }
-  getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
-  getBathroomBreakLimit(ss);
+  await getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
+  await getBathroomBreakLimit(ss);
 }
 
-function processBarcode(studentId) {
+async function processBarcode(studentId) {
   try {
-    const lock = _acquireLock_(30000);
+    const lock = await _acquireLock_(30000);
     try {
-      ensureBathroomTrackerSetup_();
-      return recordBathroomBreak(studentId);
+      await ensureBathroomTrackerSetup_();
+      return await recordBathroomBreak(studentId);
     } finally {
       try { lock.releaseLock(); } catch (_) {}
     }
@@ -790,9 +817,9 @@ function processBarcode(studentId) {
   }
 }
 
-function recordBathroomBreak(studentId) {
-  const ss = _getSpreadsheet_();
-  const bathroomLogSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
+async function recordBathroomBreak(studentId) {
+  const ss = await _getSpreadsheet_();
+  const bathroomLogSheet = await getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
   const rosterSheet = ss.getSheetByName(CONFIG.ROSTER_SHEET);
 
   // Find student name
@@ -852,31 +879,34 @@ function recordBathroomBreak(studentId) {
     const now = new Date();
     const duration = Math.round((now - lastOutTime) / 60000);
     bathroomLogSheet.appendRow([now, studentId, studentName, studentPeriod, 'in', duration]);
-    _bumpVersion_(ss.getId());
+    await _bumpVersion_(ss.getId());
     return `${studentName} checked back in. Duration: ${duration} minutes.`;
   } else {
-    const limit = getBathroomBreakLimit(ss);
+    const limit = await getBathroomBreakLimit(ss);
     if (tripsToday >= limit) {
       throw new Error(`${studentName} has reached the bathroom break limit of ${limit}.`);
     }
     bathroomLogSheet.appendRow([new Date(), studentId, studentName, studentPeriod, 'out', '']);
-    _bumpVersion_(ss.getId());
+    await _bumpVersion_(ss.getId());
     return `${studentName} checked out for a bathroom break.`;
   }
 }
 
-function getBathroomAnalytics() {
-  const ss = _getSpreadsheet_();
+async function getBathroomAnalytics() {
+  const ss = await _getSpreadsheetOrNull_();
+  if (!ss) {
+    return { students: {}, periods: {} };
+  }
   const ssId = ss.getId();
-  const ver = _getVersion_(ssId);
+  const ver = await _getVersion_(ssId);
   const cacheKey = APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver;
-  const cached = _cacheGet_(cacheKey);
+  const cached = await _cacheGet_(cacheKey);
   if (cached) return cached;
 
   const bathroomLogSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
   if (!bathroomLogSheet) {
     const empty = { students: {}, periods: {} };
-    _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
+    await _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
     return empty;
   }
 
@@ -907,23 +937,23 @@ function getBathroomAnalytics() {
     }
   }
 
-  _cachePut_(cacheKey, analytics, CONFIG.CACHE_TTL_BATHROOM);
+  await _cachePut_(cacheKey, analytics, CONFIG.CACHE_TTL_BATHROOM);
   return analytics;
 }
 
-function getBathroomStatus(period) {
-  const ss = _getSpreadsheet_();
+async function getBathroomStatus(period) {
+  const ss = await _getSpreadsheet_();
   const p = String(period || '');
   const ssId = ss.getId();
-  const ver = _getVersion_(ssId);
+  const ver = await _getVersion_(ssId);
   const cacheKey = APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + ver;
-  const cached = _cacheGet_(cacheKey);
+  const cached = await _cacheGet_(cacheKey);
   if (cached) return cached;
 
   const logSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
   if (!logSheet) {
     const empty = { out: [], in: [] };
-    _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
+    await _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
     return empty;
   }
 
@@ -962,6 +992,6 @@ function getBathroomStatus(period) {
   inside.sort((a, b) => a.name.localeCompare(b.name));
 
   const result = { out: out, in: inside };
-  _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_BATHROOM);
+  await _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_BATHROOM);
   return result;
 }

@@ -167,7 +167,7 @@
 
   const setActiveChip = (selector, isActive)=> $$(selector).forEach(el=> el.classList.toggle('active', isActive(el)));
 
-  function initAnalyticsToolbar(){
+  async function initAnalyticsToolbar(){
     setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=>{
       const v = el.getAttribute('data-topn');
       return (v==='all' && analyticsConfig.topStudentsN==='all') || (+v===analyticsConfig.topStudentsN);
@@ -175,18 +175,18 @@
     setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
 
     $$('.analytics-toolbar .chip-sm[data-topn]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+      btn.addEventListener('click', async ()=>{
         const v = btn.getAttribute('data-topn');
         analyticsConfig.topStudentsN = (v==='all') ? 'all' : parseInt(v,10);
         setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=> el===btn);
-        if (currentView==='analytics') renderAnalytics();
+        if (currentView==='analytics') await renderAnalytics();
       });
     });
     $$('.analytics-toolbar .chip-sm[data-density]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
+      btn.addEventListener('click', async ()=>{
         analyticsConfig.density = btn.getAttribute('data-density');
         setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el===btn);
-        if (currentView==='analytics') renderAnalytics();
+        if (currentView==='analytics') await renderAnalytics();
       });
     });
 
@@ -199,12 +199,12 @@
           analyticsConfig.tableSort.key = key;
           analyticsConfig.tableSort.dir = (key==='student'?'asc':'desc');
         }
-        renderAnalytics();
+        await renderAnalytics();
       });
     });
   }
 
-  function renderAnalytics(){
+  async function renderAnalytics(){
     const totalsByIssue = (COUNTS.issues || []).map((lab, i)=>{
       let sum = 0; (COUNTS.rows||[]).forEach(r => sum += (r.counts[i]||0)); return { lab, sum };
     });
@@ -224,7 +224,7 @@
     $('#kpiTopStudentCount').textContent = topStudent.sum ? `${topStudent.sum} total` : '';
     $('#kpiIssueVariety').textContent = String(issueVariety);
 
-    drawBarChart($('#chartIssues'),
+    await drawBarChart($('#chartIssues'),
       totalsByIssue.map(x=>x.lab),
       totalsByIssue.map(x=>x.sum),
       { title:'Issues', maxBars: 14, density: analyticsConfig.density }
@@ -234,7 +234,7 @@
     if (analyticsConfig.topStudentsN !== 'all'){
       studentsSorted = studentsSorted.slice(0, analyticsConfig.topStudentsN);
     }
-    drawBarChart($('#chartStudents'),
+    await drawBarChart($('#chartStudents'),
       studentsSorted.map(x=>x.student),
       studentsSorted.map(x=>x.sum),
       { title:'Students', maxBars: (analyticsConfig.topStudentsN==='all'? 18 : analyticsConfig.topStudentsN), density: analyticsConfig.density }
@@ -269,60 +269,79 @@
     setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
   }
 
-  function renderBathroomAnalytics() {
-    google.script.run.withSuccessHandler(data => {
+  async function renderBathroomAnalytics() {
+    google.script.run.withSuccessHandler(state => {
       const studentBody = $('#bathroomAnalyticsTable tbody');
       const periodBody = $('#bathroomPeriodTable tbody');
       studentBody.innerHTML = '';
       periodBody.innerHTML = '';
-      const students = data.students || {};
-      const periods = data.periods || {};
-      if (Object.keys(students).length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 3;
-        td.textContent = 'No bathroom logs recorded today.';
-        tr.appendChild(td);
-        studentBody.appendChild(tr);
-      } else {
-        for (const student in students) {
+
+      if (!state || !state.attached) {
+        const tr1 = document.createElement('tr');
+        const td1 = document.createElement('td');
+        td1.colSpan = 3;
+        td1.textContent = 'No data spreadsheet is attached.';
+        tr1.appendChild(td1);
+        const tr2 = document.createElement('tr');
+        const td2 = document.createElement('td');
+        td2.colSpan = 3;
+        td2.textContent = 'No data spreadsheet is attached.';
+        tr2.appendChild(td2);
+        studentBody.appendChild(tr1);
+        periodBody.appendChild(tr2);
+        return;
+      }
+
+      google.script.run.withSuccessHandler(data => {
+        const students = data.students || {};
+        const periods = data.periods || {};
+        if (Object.keys(students).length === 0) {
           const tr = document.createElement('tr');
-          const s = students[student] || {};
+          const td = document.createElement('td');
+          td.colSpan = 3;
+          td.textContent = 'No bathroom logs recorded today.';
+          tr.appendChild(td);
+          studentBody.appendChild(tr);
+        } else {
+          for (const student in students) {
+            const tr = document.createElement('tr');
+            const s = students[student] || {};
             tr.append(
               el('td', {}, student),
               el('td', {}, String(s.visits || 0)),
               el('td', {}, String(s.minutes || 0))
             );
-          studentBody.appendChild(tr);
+            studentBody.appendChild(tr);
+          }
         }
-      }
-      if (Object.keys(periods).length === 0) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 3;
-        td.textContent = 'No bathroom logs recorded today.';
-        tr.appendChild(td);
-        periodBody.appendChild(tr);
-      } else {
-        for (const period in periods) {
+        if (Object.keys(periods).length === 0) {
           const tr = document.createElement('tr');
-          const p = periods[period] || {};
+          const td = document.createElement('td');
+          td.colSpan = 3;
+          td.textContent = 'No bathroom logs recorded today.';
+          tr.appendChild(td);
+          periodBody.appendChild(tr);
+        } else {
+          for (const period in periods) {
+            const tr = document.createElement('tr');
+            const p = periods[period] || {};
             tr.append(
               el('td', {}, period),
               el('td', {}, String(p.visits || 0)),
               el('td', {}, String(p.minutes || 0))
             );
-          periodBody.appendChild(tr);
+            periodBody.appendChild(tr);
+          }
         }
-      }
-    }).getBathroomAnalytics();
+      }).getBathroomAnalytics();
+    }).getAppState();
   }
 
   // Call the function to render the analytics
   renderBathroomAnalytics();
 
   // Improved bar chart: ensures labels and values don't overlap content
-  function drawBarChart(canvas, labels, values, opts = {}) {
+  async function drawBarChart(canvas, labels, values, opts = {}) {
     const DPR = Math.max(1, window.devicePixelRatio || 1);
 
     const density = opts.density || 'comfortable';

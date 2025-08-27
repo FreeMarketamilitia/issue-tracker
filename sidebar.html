@@ -393,6 +393,7 @@
       </div>
       <div class="setup-actions">
         <button id="setupCancel" class="btn ghost">Skip for now</button>
+        <button id="setupFind" class="btn ghost">Find Existing</button>
         <button id="setupBuild" class="btn">Build Sheets</button>
       </div>
     </div>
@@ -419,8 +420,8 @@
   const $$ = q => Array.from(document.querySelectorAll(q));
   const debounce = (fn, ms=180) => { let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),ms); }; };
 
-  function toast(msg){ const t=$('#toast'); t.textContent = msg || 'Saved'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1400); }
-  function el(tag, attrs={}, ...kids){
+  async function toast(msg){ const t=$('#toast'); t.textContent = msg || 'Saved'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1400); }
+  async function el(tag, attrs={}, ...kids){
     const e = document.createElement(tag);
     for (const [k,v] of Object.entries(attrs||{})){
       if (k==='class') e.className=v;
@@ -434,10 +435,10 @@
   }
 
   // ==================== First-run bootstrap ====================
-  function bootstrap(){
+  async function bootstrap(){
     $('#mainLog').setAttribute('aria-busy','true');
     $('#mainAnalytics').setAttribute('aria-busy','true');
-    google.script.run.withSuccessHandler((state)=>{
+    google.script.run.withSuccessHandler(async (state)=>{
       APP = { attached: !!state?.attached, ssId: state?.ssId || null, ssUrl: state?.ssUrl || null };
 
       $('#openSheet').style.display = APP.ssUrl ? 'inline-flex' : 'none';
@@ -448,45 +449,45 @@
         showSetup(true);
       } else {
         showSetup(false);
-        load();
+        await load();
       }
       $('#mainLog').setAttribute('aria-busy','false');
       $('#mainAnalytics').setAttribute('aria-busy','false');
 
-      initAnalyticsToolbar();
-      initLayoutToggle();
+      await initAnalyticsToolbar();
+      await initLayoutToggle();
     }).getAppState();
   }
-  function showSetup(show){ $('#setup').classList.toggle('active', !!show); }
+  async function showSetup(show){ $('#setup').classList.toggle('active', !!show); }
 
   // ==================== Layout Toggle ====================
-  function initLayoutToggle(){
+  async function initLayoutToggle(){
     const listBtn = $('#btnListMode');
     const gridBtn = $('#btnGridMode');
 
-    function update(){
+    async function update(){
       listBtn.classList.toggle('active', studentLayout === 'list');
       gridBtn.classList.toggle('active', studentLayout === 'grid');
       $('#studentList').classList.toggle('grid', studentLayout === 'grid');
-      renderStudents();
+      await renderStudents();
     }
 
-    listBtn.addEventListener('click', ()=>{ studentLayout = 'list'; update(); });
-    gridBtn.addEventListener('click', ()=>{ studentLayout = 'grid'; update(); });
-    update();
+    listBtn.addEventListener('click', async ()=>{ studentLayout = 'list'; await update(); });
+    gridBtn.addEventListener('click', async ()=>{ studentLayout = 'grid'; await update(); });
+    await update();
   }
 
   // ==================== View Switch ====================
-  function setView(view){
+  async function setView(view){
     currentView = view;
     $('#viewLog').classList.toggle('active', view==='log');
     $('#viewAnalytics').classList.toggle('active', view==='analytics');
     $('#mainLog').classList.toggle('active', view==='log');
     $('#mainAnalytics').classList.toggle('active', view==='analytics');
     if (view === 'analytics') {
-      renderAnalytics(); // use local COUNTS
+      await renderAnalytics(); // use local COUNTS
       if (typeof renderBathroomAnalytics === 'function') {
-        renderBathroomAnalytics();
+        await renderBathroomAnalytics();
       }
     }
     if (view === 'log' && barcodeInput) {
@@ -495,7 +496,7 @@
   }
 
   // ==================== Period Tabs & Switching ====================
-  function setPeriod(p){
+  async function setPeriod(p){
     currentPeriod = p;
     currentStudent = null;
 
@@ -506,22 +507,21 @@
     if (searchInput) searchInput.value = '';
 
     // Optimistic UI render
-    renderTabs();
+    await renderTabs();
 
     // Fetch counts for the selected period
-    google.script.run.withSuccessHandler((snap)=>{
+    google.script.run.withSuccessHandler(async (snap)=>{
       COUNTS = snap || { issues:[], rows:[] };
-
-      renderFilters();
-      renderStudents();
-      renderDetail();
-      if (currentView === 'analytics') renderAnalytics();
-      refreshStatus();
-      if (typeof renderBathroomAnalytics === 'function') renderBathroomAnalytics();
+      await renderFilters();
+      await renderStudents();
+      await renderDetail();
+      if (currentView === 'analytics') await renderAnalytics();
+      await refreshStatus();
+      if (typeof renderBathroomAnalytics === 'function') await renderBathroomAnalytics();
     }).getCountsSnapshot(currentPeriod);
   }
 
-  function renderTabs(){
+  async function renderTabs(){
     const wrap = $('#tabs'); wrap.innerHTML = '';
     DATA.periods.forEach(p=>{
       wrap.appendChild(el('button', {
@@ -532,7 +532,7 @@
   }
 
   // ==================== Filters (issues) ====================
-  function renderFilters(){
+  async function renderFilters(){
     const host = $('#issueFilters'); host.innerHTML = '';
     if (!COUNTS.issues.length) return;
 
@@ -542,8 +542,8 @@
         onclick: ()=>{
           if (activeIssueFilters.has(idx)) activeIssueFilters.delete(idx);
           else activeIssueFilters.add(idx);
-          renderFilters();
-          renderStudents();
+          await renderFilters();
+          await renderStudents();
         }
       }, label);
       host.appendChild(chip);
@@ -555,8 +555,8 @@
           class:'filter-chip',
           onclick: ()=>{
             activeIssueFilters.clear();
-            renderFilters();
-            renderStudents();
+            await renderFilters();
+            await renderStudents();
           }
         }, 'Clear filters')
       );
@@ -564,7 +564,7 @@
   }
 
   // ==================== Students ====================
-  function renderStudents(){
+  async function renderStudents(){
     const list = $('#studentList'); list.innerHTML = '';
     const namesAll = (DATA.perMap[currentPeriod] || []);
     const names = namesAll
@@ -581,7 +581,7 @@
 
     names.forEach((name)=>{
       if (studentLayout === 'grid'){
-        const card = el('div', { class:'student-item' + (name===currentStudent?' active':''), onclick: ()=> selectStudent(name) },
+        const card = el('div', { class:'student-item' + (name===currentStudent?' active':''), onclick: async ()=> await selectStudent(name) },
           el('div', { class:'avatar' }, name.trim().charAt(0).toUpperCase() || 'S'),
           el('div', { class:'student-col' },
             el('div', { class:'student-meta' },
@@ -594,7 +594,7 @@
         card.dataset.name = name;
         list.appendChild(card);
       } else {
-        const row = el('div', { class:'student-item' + (name===currentStudent?' active':''), onclick: ()=> selectStudent(name) },
+        const row = el('div', { class:'student-item' + (name===currentStudent?' active':''), onclick: async ()=> await selectStudent(name) },
           el('div', { class:'avatar' }, name.trim().charAt(0).toUpperCase() || 'S'),
           el('div', { class:'student-col' },
             el('div', { class:'student-meta' },
@@ -609,15 +609,15 @@
       }
     });
 
-    fillListBadges();
-    if (!currentStudent && names.length) selectStudent(names[0]);
+    await fillListBadges();
+    if (!currentStudent && names.length) await selectStudent(names[0]);
   }
 
   /**
    * Populate per-student top issue badges.
    * Shows up to 5 most frequent issues per student.
    */
-  function fillListBadges(){
+  async function fillListBadges(){
     if (!COUNTS.issues.length) return;
     const map = new Map(COUNTS.rows.map(r => [r.student, r.counts]));
 
@@ -646,14 +646,14 @@
     });
   }
 
-  function selectStudent(name){
+  async function selectStudent(name){
     currentStudent = name;
     $$('.student-item').forEach(r=> r.classList.toggle('active', r.dataset.name===name));
-    renderDetail();
+    await renderDetail();
   }
 
   // ==================== Detail panel ====================
-  function renderDetail(){
+  async function renderDetail(){
     const nameBox = $('#detailName');
     const subBox = $('#detailSub');
     const grid = $('#issueGrid');
@@ -684,13 +684,13 @@
         el('span', {
           class:'label',
           title:'Click to +1',
-          onclick: ()=> increment(issue, i, selectedStudent, selectedPeriod)
+          onclick: async ()=> await increment(issue, i, selectedStudent, selectedPeriod)
         }, issue),
         el('div', { class:'actions' },
           el('button', {
             class:'icon-btn minus',
             title:'-1 (undo)',
-            onclick: (ev)=>{ ev.stopPropagation(); decrement(issue, i, selectedStudent, selectedPeriod); }
+            onclick: async (ev)=>{ ev.stopPropagation(); await decrement(issue, i, selectedStudent, selectedPeriod); }
           }, '−'),
           el('span', { class:'count-badge', id:`cnt_${i}` }, String(val))
         )
@@ -700,7 +700,7 @@
   }
 
   // ==================== Fast local updates ====================
-  function applyDeltaToCounts(studentName, issueLabel, delta) {
+  async function applyDeltaToCounts(studentName, issueLabel, delta) {
     if (!studentName || !issueLabel) return;
 
     const namesInPeriod = (DATA.perMap[currentPeriod] || []);
@@ -723,7 +723,7 @@
     row.counts[issueIdx] = Math.max(0, val);
   }
 
-  function updateDetailAndBadges(studentName, issueIndexForBadge) {
+  async function updateDetailAndBadges(studentName, issueIndexForBadge) {
     if (currentStudent === studentName) {
       const idxByIssue = new Map(COUNTS.issues.map((lab,i)=>[lab,i]));
       const issueLabel = DATA.issues[issueIndexForBadge];
@@ -735,32 +735,32 @@
         if (badge) badge.textContent = String(v);
       }
     }
-    fillListBadges();
-    if (currentView === 'analytics') renderAnalytics();
+    await fillListBadges();
+    if (currentView === 'analytics') await renderAnalytics();
   }
 
   // ==================== Increment / Decrement ====================
-  function increment(issue, issueIndex, studentName, periodName){
+  async function increment(issue, issueIndex, studentName, periodName){
     if (!studentName) return;
     const notes = ($('#note').value || '').trim();
     lastIssueIndex = issueIndex;
 
-    applyDeltaToCounts(studentName, issue, +1);
-    updateDetailAndBadges(studentName, issueIndex);
+    await applyDeltaToCounts(studentName, issue, +1);
+    await updateDetailAndBadges(studentName, issueIndex);
     $('#note').value = '';
 
-    google.script.run.withSuccessHandler((res)=>{
+    google.script.run.withSuccessHandler(async (res)=>{
       if (res && res.ok){
         toast(`+1 ${issue} for ${studentName}`);
       } else {
-        applyDeltaToCounts(studentName, issue, -1);
-        updateDetailAndBadges(studentName, issueIndex);
+        await applyDeltaToCounts(studentName, issue, -1);
+        await updateDetailAndBadges(studentName, issueIndex);
         toast((res && res.message) ? res.message : 'Failed to save');
       }
     }).logEntries({ entries: [{ student: studentName, issue, notes }] });
   }
 
-  function decrement(issue, issueIndex, studentName, periodName){
+  async function decrement(issue, issueIndex, studentName, periodName){
     if (!studentName) return;
 
     const idxByIssue = new Map(COUNTS.issues.map((lab,i)=>[lab,i]));
@@ -771,15 +771,15 @@
       return;
     }
 
-    applyDeltaToCounts(studentName, issue, -1);
-    updateDetailAndBadges(studentName, issueIndex);
+    await applyDeltaToCounts(studentName, issue, -1);
+    await updateDetailAndBadges(studentName, issueIndex);
 
-    google.script.run.withSuccessHandler((res)=>{
+    google.script.run.withSuccessHandler(async (res)=>{
       if (res && res.ok){
         toast(`−1 ${issue} for ${studentName}`);
       } else {
-        applyDeltaToCounts(studentName, issue, +1);
-        updateDetailAndBadges(studentName, issueIndex);
+        await applyDeltaToCounts(studentName, issue, +1);
+        await updateDetailAndBadges(studentName, issueIndex);
         const msg = (res && res.message) ? res.message : 'Nothing to undo';
         toast(msg);
       }
@@ -787,9 +787,9 @@
   }
 
   // ==================== Data loaders ====================
-  function load(){
+  async function load(){
     $('#refresh').disabled = true;
-    google.script.run.withSuccessHandler((data)=>{
+    google.script.run.withSuccessHandler(async (data)=>{
       DATA = data || { periods:[], perMap:{}, issues:[] };
       if (!DATA.periods.length){
         $('#tabs').innerHTML = '';
@@ -798,14 +798,16 @@
         return;
       }
       if (!currentPeriod) currentPeriod = DATA.periods[0];
-      renderTabs();
+      await renderTabs();
 
-      google.script.run.withSuccessHandler((snap)=>{
+      google.script.run.withSuccessHandler(async (snap)=>{
         COUNTS = snap || { issues:[], rows:[] };
-        renderFilters(); renderStudents(); renderDetail();
-        if (currentView==='analytics') renderAnalytics();
-        refreshStatus();
-        if (typeof renderBathroomAnalytics === 'function') renderBathroomAnalytics();
+        await renderFilters();
+        await renderStudents();
+        await renderDetail();
+        if (currentView==='analytics') await renderAnalytics();
+        await refreshStatus();
+        if (typeof renderBathroomAnalytics === 'function') await renderBathroomAnalytics();
         $('#refresh').disabled = false;
       }).getCountsSnapshot(currentPeriod);
     }).getData();
@@ -825,11 +827,11 @@
     }, 100);
   });
 
-  function handleScan(code){
+  async function handleScan(code){
     $('#scanResult').innerText = `Processing scan: ${code}`;
-    refreshStatus();
+    await refreshStatus();
     if(typeof renderBathroomAnalytics === 'function'){
-      renderBathroomAnalytics();
+      await renderBathroomAnalytics();
     }
     google.script.run
       .withSuccessHandler(updateUI)
@@ -837,26 +839,26 @@
       .processBarcode(code);
   }
 
-  function updateUI(message){
+  async function updateUI(message){
     $('#scanResult').innerText = message;
-    refreshStatus();
+    await refreshStatus();
     if(typeof renderBathroomAnalytics === 'function'){
-      renderBathroomAnalytics();
+      await renderBathroomAnalytics();
     }
     barcodeInput.focus();
   }
 
-  function showError(error){
+  async function showError(error){
     $('#scanResult').innerText = error.message;
     barcodeInput.focus();
   }
 
-  function refreshStatus(){
+  async function refreshStatus(){
     const period = currentPeriod || null;
-    google.script.run.withSuccessHandler(renderStatus).getBathroomStatus(period);
+    google.script.run.withSuccessHandler(async status => { await renderStatus(status); }).getBathroomStatus(period);
   }
 
-  function renderStatus(status){
+  async function renderStatus(status){
     const outList = $('#outList');
     const inList = $('#inList');
     outList.innerHTML = '';
@@ -892,11 +894,11 @@
     $('#adminMenu').classList.remove('open');
     if (!APP.attached) return toast('Sheets not set up yet.');
     if (!confirm('Delete ALL logs (QuickLog, bathroom, analytics)? This cannot be undone.')) return;
-    google.script.run.withSuccessHandler((res)=>{
+    google.script.run.withSuccessHandler(async (res)=>{
       toast(res && res.message || 'Cleared.');
       COUNTS = { issues: COUNTS.issues, rows: [] };
-      renderStudents(); renderDetail();
-      if (currentView==='analytics') renderAnalytics();
+      await renderStudents(); await renderDetail();
+      if (currentView==='analytics') await renderAnalytics();
     }).clearAllLogs();
   });
   $('#menuOpen').addEventListener('click', ()=>{
@@ -904,27 +906,42 @@
     if (APP.ssUrl) window.open(APP.ssUrl, '_blank'); else toast('No spreadsheet yet.');
   });
 
-  $('#setupBuild').addEventListener('click', ()=>{
+  $('#setupBuild').addEventListener('click', async ()=>{
     const name = ($('#ssName').value || '').trim() || 'Issue Logger (Data)';
     const seed = $('#seedDemo').checked;
     $('#setupSpinner').classList.add('show');
-    $('#setupBuild').disabled = true; $('#setupCancel').disabled = true;
-    google.script.run.withSuccessHandler((res)=>{
+    $('#setupBuild').disabled = true; $('#setupCancel').disabled = true; $('#setupFind').disabled = true;
+    google.script.run.withSuccessHandler(async (res)=>{
       $('#setupSpinner').classList.remove('show');
-      $('#setupBuild').disabled = false; $('#setupCancel').disabled = false;
+      $('#setupBuild').disabled = false; $('#setupCancel').disabled = false; $('#setupFind').disabled = false;
       if (res && res.ok){
         APP.attached = true; APP.ssId = res.ssId; APP.ssUrl = res.ssUrl;
         $('#openSheet').style.display = APP.ssUrl ? 'inline-flex' : 'none';
         $('#refresh').disabled = false; $('#menuBuild').style.display = 'none';
-        toast('Sheets built.'); showSetup(false); load();
+        toast('Sheets built.'); showSetup(false); await load();
       } else { toast(res && res.message ? res.message : 'Build failed.'); }
     }).buildSheets({ seed, name });
+  });
+  $('#setupFind').addEventListener('click', async ()=>{
+    const name = ($('#ssName').value || '').trim() || 'Issue Logger (Data)';
+    $('#setupSpinner').classList.add('show');
+    $('#setupBuild').disabled = true; $('#setupCancel').disabled = true; $('#setupFind').disabled = true;
+    google.script.run.withSuccessHandler(async (res)=>{
+      $('#setupSpinner').classList.remove('show');
+      $('#setupBuild').disabled = false; $('#setupCancel').disabled = false; $('#setupFind').disabled = false;
+      if (res && res.ok){
+        APP.attached = true; APP.ssId = res.ssId; APP.ssUrl = res.ssUrl;
+        $('#openSheet').style.display = APP.ssUrl ? 'inline-flex' : 'none';
+        $('#refresh').disabled = false; $('#menuBuild').style.display = 'none';
+        toast('Spreadsheet attached.'); showSetup(false); await load();
+      } else { toast(res && res.message ? res.message : 'Sheet not found.'); }
+    }).findSpreadsheet(name);
   });
   $('#setupCancel').addEventListener('click', ()=> showSetup(false));
 
   $('#openSheet').addEventListener('click', ()=> APP.ssUrl ? window.open(APP.ssUrl, '_blank') : toast('No spreadsheet yet.'));
-  $('#search').addEventListener('input', debounce((e)=>{ searchTerm = (e.target.value || '').trim().toLowerCase(); renderStudents(); }, 120));
-  $('#refresh').addEventListener('click', ()=> { if (!APP.attached) return; load(); if (currentView==='analytics') setTimeout(renderAnalytics, 50); });
+  $('#search').addEventListener('input', debounce(async (e)=>{ searchTerm = (e.target.value || '').trim().toLowerCase(); await renderStudents(); }, 120));
+  $('#refresh').addEventListener('click', async ()=> { if (!APP.attached) return; await load(); if (currentView==='analytics') setTimeout(()=>renderAnalytics(), 50); });
   $('#clearNote').addEventListener('click', ()=> $('#note').value='');
   $('#viewLog').addEventListener('click', ()=> setView('log'));
   $('#viewAnalytics').addEventListener('click', ()=> setView('analytics'));
