@@ -125,7 +125,7 @@ function _isIdTrashed_(id) {
     const f = DriveApp.getFileById(id);
     return f.isTrashed();
   } catch (e) {
-    return false;
+    return true; // treat unknown or inaccessible files as trashed
   }
 }
 
@@ -145,7 +145,9 @@ function _clearCachesFor_(ssId) {
         keys.push(APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + v);
       }
     }
-    cache.removeAll(keys);
+    while (keys.length) {
+      cache.removeAll(keys.splice(0, 100));
+    }
   } catch (e) {}
   try {
     _getScriptProps().deleteProperty(APP.PROP_PREFIX_VER + ssId);
