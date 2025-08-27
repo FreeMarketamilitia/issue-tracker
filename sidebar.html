@@ -229,6 +229,20 @@
       .log-grid{grid-template-columns: 1fr;}
       .list{max-height:none}
     }
+
+    @supports (-webkit-touch-callout: none) {
+      /* Safari: ensure issue selector sits beside student selector */
+      #mainLog{display:flex; flex-wrap:wrap; gap:18px;}
+      #mainLog > .panel:first-child{flex:0 0 460px;}
+      #mainLog > .panel:nth-child(2){flex:1; min-width:0;}
+      #mainLog > .panel:nth-child(n+3){flex-basis:100%;}
+      @media (max-width: 1350px){
+        #mainLog{flex-direction:column;}
+        #mainLog > .panel:first-child,
+        #mainLog > .panel:nth-child(2),
+        #mainLog > .panel:nth-child(n+3){flex:1 1 auto; min-width:auto;}
+      }
+    }
   </style>
 </head>
 <body>
@@ -877,7 +891,7 @@
   $('#menuClear').addEventListener('click', ()=>{
     $('#adminMenu').classList.remove('open');
     if (!APP.attached) return toast('Sheets not set up yet.');
-    if (!confirm('Delete ALL logs in QuickLog? This cannot be undone.')) return;
+    if (!confirm('Delete ALL logs (QuickLog, bathroom, analytics)? This cannot be undone.')) return;
     google.script.run.withSuccessHandler((res)=>{
       toast(res && res.message || 'Cleared.');
       COUNTS = { issues: COUNTS.issues, rows: [] };
