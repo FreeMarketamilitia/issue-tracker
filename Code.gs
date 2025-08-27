@@ -836,6 +836,7 @@ function getBathroomAnalytics() {
   const logData = bathroomLogSheet.getDataRange().getValues();
   const analytics = { students: {}, periods: {} };
   const today = new Date().setHours(0, 0, 0, 0);
+  const active = {};
 
   for (let i = 1; i < logData.length; i++) {
     const row = logData[i];
@@ -844,13 +845,34 @@ function getBathroomAnalytics() {
     const studentName = row[2];
     const period = row[3];
     const direction = row[4];
-    const duration = row[5];
-    if (direction === 'in' && duration) {
-      analytics.students[studentName] = (analytics.students[studentName] || 0) + Number(duration);
+    const duration = Number(row[5]) || 0;
+
+    if (!analytics.students[studentName]) {
+      analytics.students[studentName] = { visits: 0, minutes: 0 };
     }
+    if (!analytics.periods[period]) {
+      analytics.periods[period] = { visits: 0, minutes: 0 };
+    }
+
     if (direction === 'out') {
-      analytics.periods[period] = (analytics.periods[period] || 0) + 1;
+      active[studentName] = { time: new Date(row[0]), period };
+    } else if (direction === 'in') {
+      analytics.students[studentName].visits += 1;
+      analytics.students[studentName].minutes += duration;
+      analytics.periods[period].visits += 1;
+      analytics.periods[period].minutes += duration;
+      delete active[studentName];
     }
+  }
+
+  const now = new Date();
+  for (const student in active) {
+    const info = active[student];
+    const mins = Math.round((now - info.time) / 60000);
+    analytics.students[student].minutes += mins;
+    const period = info.period;
+    if (!analytics.periods[period]) analytics.periods[period] = { visits: 0, minutes: 0 };
+    analytics.periods[period].minutes += mins;
   }
 
   _cachePut_(cacheKey, analytics, CONFIG.CACHE_TTL_BATHROOM);

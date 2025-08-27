@@ -111,23 +111,45 @@
     </div>
   </div>
 
-  <!-- Table -->
-  <div class="panel table-panel" aria-label="Student details table">
-    <div class="table-toolbar">
-      <div class="panel-title" style="margin:0">Details (Current Period)</div>
-      <div class="muted">Tip: click headers to sort</div>
+  <!-- Details and Bathroom Visits by Period -->
+  <div class="section" aria-label="Details and bathroom visits by period">
+    <!-- Details (Current Period) -->
+    <div class="panel table-panel" aria-label="Student details table">
+      <div class="table-toolbar">
+        <div class="panel-title" style="margin:0">Details (Current Period)</div>
+        <div class="muted">Tip: click headers to sort</div>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="analyticsTable">
+          <thead>
+            <tr>
+              <th><button class="th-btn" data-sort="student" aria-label="Sort by student">Student</button></th>
+              <th style="width:120px"><button class="th-btn" data-sort="total" aria-label="Sort by total">Total</button></th>
+              <th><button class="th-btn" data-sort="top" aria-label="Sort by top issue">Top Issue</button></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
-    <div class="table-wrap">
-      <table class="table" id="analyticsTable">
-        <thead>
-          <tr>
-            <th><button class="th-btn" data-sort="student" aria-label="Sort by student">Student</button></th>
-            <th style="width:120px"><button class="th-btn" data-sort="total" aria-label="Sort by total">Total</button></th>
-            <th><button class="th-btn" data-sort="top" aria-label="Sort by top issue">Top Issue</button></th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+
+    <!-- Bathroom Visits by Period -->
+    <div class="panel table-panel" aria-label="Bathroom visits by period table">
+      <div class="table-toolbar">
+        <div class="panel-title" style="margin:0">Bathroom Visits (Today by Period)</div>
+      </div>
+      <div class="table-wrap">
+        <table class="table" id="bathroomPeriodTable">
+          <thead>
+            <tr>
+              <th>Period</th>
+              <th style="width:80px">Visits</th>
+              <th style="width:120px">Minutes Gone</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -141,25 +163,8 @@
         <thead>
           <tr>
             <th>Student</th>
-            <th style="width:120px">Total Time Out (minutes)</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Bathroom Visits by Period -->
-  <div class="panel table-panel" aria-label="Bathroom visits by period table">
-    <div class="table-toolbar">
-      <div class="panel-title" style="margin:0">Bathroom Visits (Today by Period)</div>
-    </div>
-    <div class="table-wrap">
-      <table class="table" id="bathroomPeriodTable">
-        <thead>
-          <tr>
-            <th>Period</th>
-            <th style="width:120px">Visits</th>
+            <th style="width:80px">Visits</th>
+            <th style="width:120px">Minutes Gone</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -298,28 +303,38 @@
       if (Object.keys(students).length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 2;
-        td.textContent = 'No bathroom breaks recorded today.';
+        td.colSpan = 3;
+        td.textContent = 'No bathroom logs recorded today.';
         tr.appendChild(td);
         studentBody.appendChild(tr);
       } else {
         for (const student in students) {
           const tr = document.createElement('tr');
-          tr.append(el('td', {}, student), el('td', {}, String(students[student])));
+          const s = students[student] || {};
+          tr.append(
+            el('td', {}, student),
+            el('td', {}, String(s.visits || 0)),
+            el('td', {}, String(s.minutes || 0))
+          );
           studentBody.appendChild(tr);
         }
       }
       if (Object.keys(periods).length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 2;
-        td.textContent = 'No bathroom visits recorded today.';
+        td.colSpan = 3;
+        td.textContent = 'No bathroom logs recorded today.';
         tr.appendChild(td);
         periodBody.appendChild(tr);
       } else {
         for (const period in periods) {
           const tr = document.createElement('tr');
-          tr.append(el('td', {}, period), el('td', {}, String(periods[period])));
+          const p = periods[period] || {};
+          tr.append(
+            el('td', {}, period),
+            el('td', {}, String(p.visits || 0)),
+            el('td', {}, String(p.minutes || 0))
+          );
           periodBody.appendChild(tr);
         }
       }
