@@ -381,7 +381,7 @@ async function openLoggerPopup() {
     .setHeight(CONFIG.POPUP_HEIGHT);
   try { SpreadsheetApp.getUi().showModalDialog(html, 'Issue Logger'); } catch (e) {}
 }
-async function doGet() {
+function doGet() {
   return HtmlService.createTemplateFromFile('sidebar')
     .evaluate()
     .setTitle('Issue Logger')
