@@ -134,20 +134,30 @@ function _clearCachesFor_(ssId) {
   try {
     const cache = CacheService.getUserCache();
     const ver = _getVersion_(ssId);
-    const keys = [
-      APP.CACHE_PREFIX_DATA + ssId + ':v' + ver,
-      APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver,
-      APP.CACHE_PREFIX_COUNTS + ssId + '::v' + ver,
-      APP.CACHE_PREFIX_BATH_STATUS + ssId + '::v' + ver,
-    ];
-    for (let p = 0; p <= 10; p++) {
-      keys.push(APP.CACHE_PREFIX_COUNTS + ssId + ':' + p + ':v' + ver);
-      keys.push(APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + ver);
+    const keys = [];
+    for (let v = 0; v <= ver; v++) {
+      keys.push(APP.CACHE_PREFIX_DATA + ssId + ':v' + v);
+      keys.push(APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + v);
+      keys.push(APP.CACHE_PREFIX_COUNTS + ssId + '::v' + v);
+      keys.push(APP.CACHE_PREFIX_BATH_STATUS + ssId + '::v' + v);
+      for (let p = 0; p <= 10; p++) {
+        keys.push(APP.CACHE_PREFIX_COUNTS + ssId + ':' + p + ':v' + v);
+        keys.push(APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + v);
+      }
     }
     cache.removeAll(keys);
   } catch (e) {}
   try {
     _getScriptProps().deleteProperty(APP.PROP_PREFIX_VER + ssId);
+  } catch (e) {}
+}
+
+function _clearAllCaches_() {
+  try {
+    const props = _getScriptProps().getProperties();
+    Object.keys(props)
+      .filter((k) => k.startsWith(APP.PROP_PREFIX_VER))
+      .forEach((k) => _clearCachesFor_(k.substring(APP.PROP_PREFIX_VER.length)));
   } catch (e) {}
 }
 
@@ -297,6 +307,7 @@ function clearAllLogs() {
  * ========================= */
 
 function onOpen() {
+  _clearAllCaches_();
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureBathroomTrackerSetup_(ss);
