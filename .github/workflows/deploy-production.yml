@@ -1,0 +1,54 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - 'master'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Bump version and push
+        run: |
+          npm version patch -m "chore: Bump version to %s [skip ci]"
+          git push --follow-tags
+
+      - name: Get new version
+        id: package
+        uses: jcardente/read-package-version-actions@v1
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Authenticate clasp
+        run: |
+          echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+          echo '{"scriptId":"${{ secrets.SCRIPT_ID }}"}' > .clasp.json
+
+      - name: Push code to Apps Script
+        run: clasp push --force
+
+      - name: Create new Apps Script version
+        run: echo "VERSION_NUMBER=$(clasp version "v${{ steps.package.outputs.version }}" | awk '{print $2}')" >> $GITHUB_ENV
+
+      - name: Deploy to Production
+        run: clasp deploy --versionNumber ${{ env.VERSION_NUMBER }} --deploymentId ${{ secrets.PRODUCTION_DEPLOYMENT_ID }} --description "v${{ steps.package.outputs.version }}"
