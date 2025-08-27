@@ -844,12 +844,17 @@ function getBathroomAnalytics() {
     const studentName = row[2];
     const period = row[3];
     const direction = row[4];
-    const duration = row[5];
-    if (direction === 'in' && duration) {
-      analytics.students[studentName] = (analytics.students[studentName] || 0) + Number(duration);
+
+    if (!analytics.students[studentName]) {
+      analytics.students[studentName] = { out: 0, in: 0 };
     }
-    if (direction === 'out') {
-      analytics.periods[period] = (analytics.periods[period] || 0) + 1;
+    if (!analytics.periods[period]) {
+      analytics.periods[period] = { out: 0, in: 0 };
+    }
+
+    if (direction === 'out' || direction === 'in') {
+      analytics.students[studentName][direction] += 1;
+      analytics.periods[period][direction] += 1;
     }
   }
 
