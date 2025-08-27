@@ -56,6 +56,11 @@
   });
   function handleScan(code){
     document.getElementById('scanResult').innerText = `Processing scan: ${code}`;
+    // Optimistically refresh status and analytics so UI updates immediately
+    refreshStatus();
+    if(typeof renderBathroomAnalytics === 'function'){
+      renderBathroomAnalytics();
+    }
     google.script.run
       .withSuccessHandler(updateUI)
       .withFailureHandler(showError)
@@ -63,10 +68,11 @@
   }
   function updateUI(message){
     document.getElementById('scanResult').innerText = message;
+    // Refresh status first so check-in/out lists update promptly
+    refreshStatus();
     if(typeof renderBathroomAnalytics === 'function'){
       renderBathroomAnalytics();
     }
-    refreshStatus();
     barcodeInput.focus();
   }
   function showError(error){
