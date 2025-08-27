@@ -112,59 +112,36 @@
   </div>
 
   <!-- Details and Bathroom Visits by Period -->
-  <div class="section" aria-label="Details and bathroom visits by period">
+  <div class="panel table-panel" aria-label="Details and bathroom visits by period">
     <!-- Details (Current Period) -->
-    <div class="panel table-panel" aria-label="Student details table">
-      <div class="table-toolbar">
-        <div class="panel-title" style="margin:0">Details (Current Period)</div>
-        <div class="muted">Tip: click headers to sort</div>
-      </div>
-      <div class="table-wrap">
-        <table class="table" id="analyticsTable">
-          <thead>
-            <tr>
-              <th><button class="th-btn" data-sort="student" aria-label="Sort by student">Student</button></th>
-              <th style="width:120px"><button class="th-btn" data-sort="total" aria-label="Sort by total">Total</button></th>
-              <th><button class="th-btn" data-sort="top" aria-label="Sort by top issue">Top Issue</button></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+    <div class="table-toolbar">
+      <div class="panel-title" style="margin:0">Details (Current Period)</div>
+      <div class="muted">Tip: click headers to sort</div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="analyticsTable">
+        <thead>
+          <tr>
+            <th><button class="th-btn" data-sort="student" aria-label="Sort by student">Student</button></th>
+            <th style="width:120px"><button class="th-btn" data-sort="total" aria-label="Sort by total">Total</button></th>
+            <th><button class="th-btn" data-sort="top" aria-label="Sort by top issue">Top Issue</button></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
 
     <!-- Bathroom Visits by Period -->
-    <div class="panel table-panel" aria-label="Bathroom visits by period table">
-      <div class="table-toolbar">
-        <div class="panel-title" style="margin:0">Bathroom Visits (Today by Period)</div>
-      </div>
-      <div class="table-wrap">
-        <table class="table" id="bathroomPeriodTable">
-          <thead>
-            <tr>
-              <th>Period</th>
-              <th style="width:80px">Visits</th>
-              <th style="width:80px">Minutes</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- Bathroom Analytics Table -->
-  <div class="panel table-panel" aria-label="Bathroom analytics table">
     <div class="table-toolbar">
-      <div class="panel-title" style="margin:0">Bathroom Analytics (Today)</div>
+      <div class="panel-title" style="margin:0">Bathroom Visits (Today by Period)</div>
     </div>
     <div class="table-wrap">
-      <table class="table" id="bathroomAnalyticsTable">
+      <table class="table" id="bathroomPeriodTable">
         <thead>
           <tr>
-              <th>Student</th>
-              <th style="width:80px">Visits</th>
-              <th style="width:80px">Minutes</th>
+            <th>Period</th>
+            <th style="width:80px">Visits</th>
+            <th style="width:80px">Minutes</th>
           </tr>
         </thead>
         <tbody></tbody>

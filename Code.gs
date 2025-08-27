@@ -886,7 +886,9 @@ function getBathroomStatus(period) {
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const ts = new Date(row[0]);
-    if (ts.setHours(0, 0, 0, 0) !== today) continue;
+    const day = new Date(ts);
+    day.setHours(0, 0, 0, 0);
+    if (day.getTime() !== today) continue;
     if (p && row[3] !== p) continue;
     const id = row[1];
     const name = row[2];
