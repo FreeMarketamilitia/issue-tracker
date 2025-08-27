@@ -39,6 +39,23 @@
       </div>
     </div>
   </div>
+  <div class="panel table-panel" style="grid-column:1 / -1;" aria-label="Bathroom analytics table">
+    <div class="table-toolbar">
+      <div class="panel-title" style="margin:0">Bathroom Analytics (Today)</div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="bathroomAnalyticsTable">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th style="width:80px">Visits</th>
+            <th style="width:80px">Minutes</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 <script>
   const barcodeInput = document.getElementById('barcodeInput');
@@ -108,5 +125,8 @@
     }
   }
   refreshStatus();
+  if(typeof renderBathroomAnalytics === 'function'){
+    renderBathroomAnalytics();
+  }
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) barcodeInput.focus(); });
 </script>
