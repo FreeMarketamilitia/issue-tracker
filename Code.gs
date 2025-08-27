@@ -137,6 +137,7 @@ function _getSpreadsheetOrNull_() {
         return SpreadsheetApp.openById(remembered);
       }
     } catch (e) {}
+    _clearStoredSsId();
   }
   // Container-bound fallback: remember it
   try {
