@@ -1,48 +1,69 @@
 <!-- bathroom.html (included by sidebar.html) -->
 <style>
-  #scanner-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
+  .bathroom-grid{ grid-template-columns:460px 1fr; gap:18px; }
+  #barcodeInput{
+    width:100%; padding:12px 14px; border-radius:12px;
+    border:1px solid var(--chip-border); background:var(--chip);
+    color:var(--text); font-size:16px;
   }
-  #qr-reader { width: 100%; max-width: 500px; }
-  #qr-reader-results { font-size: 14px; color: var(--muted); }
+  #barcodeInput:focus{
+    outline:none; border-color:var(--accent);
+    box-shadow:0 0 0 2px rgba(79,140,255,.4);
+  }
+  #scanResult{ font-size:14px; color:var(--muted); }
+  #scanner-container{ display:flex; flex-direction:column; gap:16px; }
+  #qr-reader{ width:100%; max-width:500px; }
+  #qr-reader-results{ font-size:14px; color:var(--muted); }
 </style>
 
-<div id="mainBathroom" class="main" aria-live="polite" aria-busy="false">
+<div id="mainBathroom" class="main bathroom-grid" aria-live="polite" aria-busy="false">
   <div class="panel" style="padding:20px;">
     <div class="panel-title" style="margin-bottom:12px;">Bathroom Break Scanner</div>
+    <div class="muted" style="margin-bottom:12px;">Scan or type a student ID then press Enter.</div>
+    <input id="barcodeInput" type="text" placeholder="Student ID" autocomplete="off" />
+    <div id="scanResult" style="margin-top:12px;"></div>
+  </div>
+  <div class="panel" style="padding:20px;">
+    <div class="panel-title" style="margin-bottom:12px;">Camera Scanner</div>
     <div id="scanner-container">
       <div id="qr-reader"></div>
-      <div id="qr-reader-results" class="muted"></div>
+      <div id="qr-reader-results"></div>
     </div>
   </div>
 </div>
 
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script>
-  function onScanSuccess(decodedText, decodedResult) {
-    console.log(`Scan result: ${decodedText}`, decodedResult);
-    document.getElementById('qr-reader-results').innerText = `Last scan: ${decodedText}`;
+  const barcodeInput = document.getElementById('barcodeInput');
+  barcodeInput.focus();
+  barcodeInput.addEventListener('keypress', (e)=>{
+    if(e.key==='Enter'){
+      const val = barcodeInput.value.trim();
+      if(val){ handleScan(val); barcodeInput.value=''; }
+    }
+  });
+  function handleScan(code){
+    document.getElementById('scanResult').innerText = `Last scan: ${code}`;
     google.script.run
       .withSuccessHandler(updateUI)
       .withFailureHandler(showError)
-      .processBarcode(decodedText);
+      .processBarcode(code);
   }
-
-  function updateUI(message) {
+  function onScanSuccess(decodedText, decodedResult){
+    handleScan(decodedText);
+  }
+  function updateUI(message){
     alert(message);
-    if (typeof renderBathroomAnalytics === 'function') {
+    if(typeof renderBathroomAnalytics === 'function'){
       renderBathroomAnalytics();
     }
+    barcodeInput.focus();
   }
-
-  function showError(error) {
+  function showError(error){
     alert(error.message);
+    barcodeInput.focus();
   }
-
-  const html5QrcodeScanner = new Html5QrcodeScanner('qr-reader', { fps: 10, qrbox: 250 });
+  const html5QrcodeScanner = new Html5QrcodeScanner('qr-reader', {fps:10, qrbox:250});
   html5QrcodeScanner.render(onScanSuccess);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) barcodeInput.focus(); });
 </script>
-

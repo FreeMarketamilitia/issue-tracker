@@ -716,7 +716,12 @@ function getBathroomBreakLimit(ss) {
 function ensureBathroomTrackerSetup_(ss) {
   ss = ss || _getSpreadsheet_();
   addStudentIdColumnToRoster(ss);
-  getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Direction', 'Duration (minutes)']);
+  const logSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
+  const headers = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0];
+  if (headers.indexOf('Period') === -1) {
+    logSheet.insertColumnAfter(3);
+    logSheet.getRange(1, 4).setValue('Period');
+  }
   getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
   getBathroomBreakLimit(ss);
 }
@@ -737,19 +742,22 @@ function processBarcode(studentId) {
 
 function recordBathroomBreak(studentId) {
   const ss = _getSpreadsheet_();
-  const bathroomLogSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Direction', 'Duration (minutes)']);
+  const bathroomLogSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
   const rosterSheet = ss.getSheetByName(CONFIG.ROSTER_SHEET);
 
   // Find student name
   const studentData = rosterSheet.getDataRange().getValues();
   let studentName = null;
+  let studentPeriod = '';
   let studentIdCol = -1;
   let studentNameCol = -1;
+  let periodCol = -1;
 
   const headers = studentData[0];
   for(let i=0; i< headers.length; i++) {
     if(headers[i] === 'Student ID') studentIdCol = i;
     if(headers[i] === 'Name') studentNameCol = i;
+    if(headers[i] === 'Period') periodCol = i;
   }
 
   if(studentIdCol === -1) throw new Error("Student ID column not found in Roster.");
@@ -759,6 +767,7 @@ function recordBathroomBreak(studentId) {
   for (let i = 1; i < studentData.length; i++) {
     if (studentData[i][studentIdCol] == studentId) {
       studentName = studentData[i][studentNameCol];
+      studentPeriod = periodCol > -1 ? studentData[i][periodCol] : '';
       break;
     }
   }
@@ -776,11 +785,11 @@ function recordBathroomBreak(studentId) {
   for (let i = logData.length - 1; i >= 1; i--) {
     if (logData[i][1] == studentId) {
        const logDate = new Date(logData[i][0]).setHours(0, 0, 0, 0);
-       if(logDate === today && logData[i][3] === 'out') {
+       if(logDate === today && logData[i][4] === 'out') {
          tripsToday++;
        }
        if(lastDirection === null) { // only set last direction on the most recent entry
-          lastDirection = logData[i][3];
+          lastDirection = logData[i][4];
           if(lastDirection === 'out'){
             lastOutTime = new Date(logData[i][0]);
           }
@@ -792,14 +801,14 @@ function recordBathroomBreak(studentId) {
   if (lastDirection === 'out') {
     const now = new Date();
     const duration = Math.round((now - lastOutTime) / 60000);
-    bathroomLogSheet.appendRow([now, studentId, studentName, 'in', duration]);
+    bathroomLogSheet.appendRow([now, studentId, studentName, studentPeriod, 'in', duration]);
     return `${studentName} checked back in. Duration: ${duration} minutes.`;
   } else {
     const limit = getBathroomBreakLimit(ss);
     if (tripsToday >= limit) {
       throw new Error(`${studentName} has reached the bathroom break limit of ${limit}.`);
     }
-    bathroomLogSheet.appendRow([new Date(), studentId, studentName, 'out', '']);
+    bathroomLogSheet.appendRow([new Date(), studentId, studentName, studentPeriod, 'out', '']);
     return `${studentName} checked out for a bathroom break.`;
   }
 }
@@ -808,23 +817,26 @@ function getBathroomAnalytics() {
   const ss = _getSpreadsheet_();
   const bathroomLogSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
   if (!bathroomLogSheet) {
-    return {};
+    return { students: {}, periods: {} };
   }
 
   const logData = bathroomLogSheet.getDataRange().getValues();
-  const analytics = {};
+  const analytics = { students: {}, periods: {} };
   const today = new Date().setHours(0, 0, 0, 0);
 
   for (let i = 1; i < logData.length; i++) {
-    const logDate = new Date(logData[i][0]).setHours(0, 0, 0, 0);
-    if (logDate === today && logData[i][3] === 'in' && logData[i][4]) {
-      const studentName = logData[i][2];
-      const duration = Number(logData[i][4]);
-      if (analytics[studentName]) {
-        analytics[studentName] += duration;
-      } else {
-        analytics[studentName] = duration;
-      }
+    const row = logData[i];
+    const logDate = new Date(row[0]).setHours(0, 0, 0, 0);
+    if (logDate !== today) continue;
+    const studentName = row[2];
+    const period = row[3];
+    const direction = row[4];
+    const duration = row[5];
+    if (direction === 'in' && duration) {
+      analytics.students[studentName] = (analytics.students[studentName] || 0) + Number(duration);
+    }
+    if (direction === 'out') {
+      analytics.periods[period] = (analytics.periods[period] || 0) + 1;
     }
   }
   return analytics;

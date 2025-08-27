@@ -149,6 +149,24 @@
     </div>
   </div>
 
+  <!-- Bathroom Visits by Period -->
+  <div class="panel table-panel" aria-label="Bathroom visits by period table">
+    <div class="table-toolbar">
+      <div class="panel-title" style="margin:0">Bathroom Visits (Today by Period)</div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="bathroomPeriodTable">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th style="width:120px">Visits</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Empty state (shown optionally if no data) -->
   <div id="analyticsEmpty" class="panel" style="padding:20px; display:none;">
     <div class="panel-title" style="margin-bottom:6px;">Nothing to show yet</div>
@@ -271,21 +289,39 @@
 
   function renderBathroomAnalytics() {
     google.script.run.withSuccessHandler(data => {
-      const tbody = $('#bathroomAnalyticsTable tbody');
-      tbody.innerHTML = '';
-      if (Object.keys(data).length === 0) {
+      const studentBody = $('#bathroomAnalyticsTable tbody');
+      const periodBody = $('#bathroomPeriodTable tbody');
+      studentBody.innerHTML = '';
+      periodBody.innerHTML = '';
+      const students = data.students || {};
+      const periods = data.periods || {};
+      if (Object.keys(students).length === 0) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
         td.colSpan = 2;
         td.textContent = 'No bathroom breaks recorded today.';
         tr.appendChild(td);
-        tbody.appendChild(tr);
-        return;
+        studentBody.appendChild(tr);
+      } else {
+        for (const student in students) {
+          const tr = document.createElement('tr');
+          tr.append(el('td', {}, student), el('td', {}, String(students[student])));
+          studentBody.appendChild(tr);
+        }
       }
-      for (const student in data) {
+      if (Object.keys(periods).length === 0) {
         const tr = document.createElement('tr');
-        tr.append(el('td', {}, student), el('td', {}, String(data[student])));
-        tbody.appendChild(tr);
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.textContent = 'No bathroom visits recorded today.';
+        tr.appendChild(td);
+        periodBody.appendChild(tr);
+      } else {
+        for (const period in periods) {
+          const tr = document.createElement('tr');
+          tr.append(el('td', {}, period), el('td', {}, String(periods[period])));
+          periodBody.appendChild(tr);
+        }
       }
     }).getBathroomAnalytics();
   }
