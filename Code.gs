@@ -21,6 +21,8 @@ const CONFIG = {
   ISSUES_SHEET: 'Issues',            // A: Issue Label
   LOG_SHEET: 'QuickLog',             // A:Timestamp | B:Student | C:Period | D:Issue | E:Notes
   COUNTS_SHEET: 'IssueCounts',       // Optional QUERY view (not required for app speed)
+  BATHROOM_LOG_SHEET: 'Bathroom Breaks',
+  SETTINGS_SHEET: 'Settings',
   POPUP_WIDTH: 1200,
   POPUP_HEIGHT: 900,
 
@@ -253,6 +255,8 @@ function onOpen() {
       .addItem('Open Sidebar (narrow)', 'openLoggerSidebar')
       .addItem('Open Popup (large)', 'openLoggerPopup')
       .addItem('Open Full Screen (web app)', 'openFullScreen')
+      .addSeparator()
+      .addItem('Open Bathroom Scanner', 'openBathroomScanner')
       .addToUi();
   } catch (e) {
     // Not container-bound; ignore.
@@ -308,6 +312,13 @@ function openFullScreen() {
     `<script>window.open(${JSON.stringify(url)}, "_blank");google.script.host.close();</script>`
   ).setWidth(10).setHeight(10);
   try { SpreadsheetApp.getUi().showModalDialog(opener, 'Opening Issue Logger…'); } catch (e) {}
+}
+
+function openBathroomScanner() {
+  const html = HtmlService.createTemplateFromFile('bathroom').evaluate()
+    .setTitle('Bathroom Scanner')
+    .setSandboxMode(HtmlService.SandboxMode.IFRAME);
+  try { SpreadsheetApp.getUi().showSidebar(html); } catch (e) {}
 }
 
 /* =========================
@@ -387,8 +398,8 @@ function ensureIssueCountsPivot_(ss) {
   sh.clear();
 
   sh.getRange('A1').setValue(
-    `=QUERY(${CONFIG.LOG_SHEET}!A1:E,` +
-    `"select Col2, count(Col4) where Col2 is not null group by Col2 pivot Col4 label count(Col4) ''", 1)`
+    `=QUERY(${CONFIG.LOG_SHEET}!A1:E,
+    "select Col2, count(Col4) where Col2 is not null group by Col2 pivot Col4 label count(Col4) ''", 1)`
   );
   sh.setFrozenRows(1);
   sh.setFrozenColumns(1);
@@ -655,4 +666,151 @@ function pingWrite() {
   } catch (e) {
     return { ok:false, message:'Ping failed: ' + e.message };
   }
+}
+
+/* =========================
+ * Bathroom Tracker
+ * ========================= */
+
+function getSheetByName(ss, name, headers) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    if (headers && headers.length > 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.setFrozenRows(1);
+    }
+  }
+  return sheet;
+}
+
+function addStudentIdColumnToRoster() {
+  const ss = _getSpreadsheet_();
+  const rosterSheet = ensureRoster_(ss);
+  const headers = rosterSheet.getRange(1, 1, 1, rosterSheet.getLastColumn()).getValues()[0];
+  if (headers.indexOf('Student ID') === -1) {
+    rosterSheet.getRange(1, headers.length + 1).setValue('Student ID');
+  }
+}
+
+function getBathroomBreakLimit() {
+  const ss = _getSpreadsheet_();
+  const settingsSheet = getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
+  const data = settingsSheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === 'Bathroom Break Limit') {
+      return parseInt(data[i][1], 10);
+    }
+  }
+  settingsSheet.appendRow(['Bathroom Break Limit', 3]);
+  return 3;
+}
+
+function processBarcode(studentId) {
+  try {
+    const lock = _acquireLock_(30000);
+    try {
+      addStudentIdColumnToRoster();
+      return recordBathroomBreak(studentId);
+    } finally {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  } catch (e) {
+    return "Error: " + e.message;
+  }
+}
+
+function recordBathroomBreak(studentId) {
+  const ss = _getSpreadsheet_();
+  const bathroomLogSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Direction', 'Duration (minutes)']);
+  const rosterSheet = ss.getSheetByName(CONFIG.ROSTER_SHEET);
+
+  // Find student name
+  const studentData = rosterSheet.getDataRange().getValues();
+  let studentName = null;
+  let studentIdCol = -1;
+  let studentNameCol = -1;
+
+  const headers = studentData[0];
+  for(let i=0; i< headers.length; i++) {
+    if(headers[i] === 'Student ID') studentIdCol = i;
+    if(headers[i] === 'Name') studentNameCol = i;
+  }
+
+  if(studentIdCol === -1) throw new Error("Student ID column not found in Roster.");
+  if(studentNameCol === -1) throw new Error("Name column not found in Roster.");
+
+
+  for (let i = 1; i < studentData.length; i++) {
+    if (studentData[i][studentIdCol] == studentId) {
+      studentName = studentData[i][studentNameCol];
+      break;
+    }
+  }
+
+  if (!studentName) {
+    throw new Error('Student not found in Roster. Please add the student and their ID to the Roster sheet.');
+  }
+
+  const logData = bathroomLogSheet.getDataRange().getValues();
+  let lastDirection = null;
+  let lastOutTime = null;
+  let tripsToday = 0;
+  const today = new Date().setHours(0, 0, 0, 0);
+
+  for (let i = logData.length - 1; i >= 1; i--) {
+    if (logData[i][1] == studentId) {
+       const logDate = new Date(logData[i][0]).setHours(0, 0, 0, 0);
+       if(logDate === today && logData[i][3] === 'out') {
+         tripsToday++;
+       }
+       if(lastDirection === null) { // only set last direction on the most recent entry
+          lastDirection = logData[i][3];
+          if(lastDirection === 'out'){
+            lastOutTime = new Date(logData[i][0]);
+          }
+       }
+    }
+  }
+
+
+  if (lastDirection === 'out') {
+    const now = new Date();
+    const duration = Math.round((now - lastOutTime) / 60000);
+    bathroomLogSheet.appendRow([now, studentId, studentName, 'in', duration]);
+    return `${studentName} checked back in. Duration: ${duration} minutes.`;
+  } else {
+    const limit = getBathroomBreakLimit();
+    if (tripsToday >= limit) {
+      throw new Error(`${studentName} has reached the bathroom break limit of ${limit}.`);
+    }
+    bathroomLogSheet.appendRow([new Date(), studentId, studentName, 'out', '']);
+    return `${studentName} checked out for a bathroom break.`;
+  }
+}
+
+function getBathroomAnalytics() {
+  const ss = _getSpreadsheet_();
+  const bathroomLogSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
+  if (!bathroomLogSheet) {
+    return {};
+  }
+
+  const logData = bathroomLogSheet.getDataRange().getValues();
+  const analytics = {};
+  const today = new Date().setHours(0, 0, 0, 0);
+
+  for (let i = 1; i < logData.length; i++) {
+    const logDate = new Date(logData[i][0]).setHours(0, 0, 0, 0);
+    if (logDate === today && logData[i][3] === 'in' && logData[i][4]) {
+      const studentName = logData[i][2];
+      const duration = Number(logData[i][4]);
+      if (analytics[studentName]) {
+        analytics[studentName] += duration;
+      } else {
+        analytics[studentName] = duration;
+      }
+    }
+  }
+  return analytics;
 }

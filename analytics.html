@@ -131,6 +131,24 @@
     </div>
   </div>
 
+  <!-- Bathroom Analytics Table -->
+  <div class="panel table-panel" aria-label="Bathroom analytics table">
+    <div class="table-toolbar">
+      <div class="panel-title" style="margin:0">Bathroom Analytics (Today)</div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="bathroomAnalyticsTable">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th style="width:120px">Total Time Out (minutes)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Empty state (shown optionally if no data) -->
   <div id="analyticsEmpty" class="panel" style="padding:20px; display:none;">
     <div class="panel-title" style="margin-bottom:6px;">Nothing to show yet</div>
@@ -250,6 +268,30 @@
     });
     setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
   }
+
+  function renderBathroomAnalytics() {
+    google.script.run.withSuccessHandler(data => {
+      const tbody = $('#bathroomAnalyticsTable tbody');
+      tbody.innerHTML = '';
+      if (Object.keys(data).length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 2;
+        td.textContent = 'No bathroom breaks recorded today.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+      for (const student in data) {
+        const tr = document.createElement('tr');
+        tr.append(el('td', {}, student), el('td', {}, String(data[student])));
+        tbody.appendChild(tr);
+      }
+    }).getBathroomAnalytics();
+  }
+
+  // Call the function to render the analytics
+  renderBathroomAnalytics();
 
   // Improved bar chart: ensures labels and values don't overlap content
   function drawBarChart(canvas, labels, values, opts = {}) {

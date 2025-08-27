@@ -1,0 +1,35 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches-ignore:
+      - 'main'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Authenticate clasp
+        run: |
+          echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+          echo '{"scriptId":"${{ secrets.SCRIPT_ID }}"}' > .clasp.json
+
+      - name: Push code
+        run: clasp push --force
+
+      - name: Create new version
+        run: echo "VERSION_NUMBER=$(clasp version "Staging build from ${{ github.ref_name }}" | awk '{print $2}')" >> $GITHUB_ENV
+
+      - name: Deploy to Staging
+        run: clasp deploy --versionNumber ${{ env.VERSION_NUMBER }} --deploymentId ${{ secrets.STAGING_DEPLOYMENT_ID }} --description "Staging build for ${{ github.ref_name }}"

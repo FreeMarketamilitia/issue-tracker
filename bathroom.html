@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@simonwep/pickr/dist/themes/classic.min.css"/>
+    <style>
+      .container-fluid {
+        padding-top: 20px;
+      }
+      #scanner-container {
+        position: relative;
+      }
+      #qr-reader {
+        width: 100%;
+      }
+      #qr-reader-results {
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container-fluid">
+      <h4>Bathroom Break Scanner</h4>
+      <div id="scanner-container">
+        <div id="qr-reader" style="width: 500px"></div>
+        <div id="qr-reader-results"></div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script>
+      function onScanSuccess(decodedText, decodedResult) {
+        // Handle on success condition with the decoded text or result.
+        console.log(`Scan result: ${decodedText}`, decodedResult);
+        document.getElementById('qr-reader-results').innerText = `Last scan: ${decodedText}`;
+        google.script.run.withSuccessHandler(updateUI).withFailureHandler(showError).processBarcode(decodedText);
+      }
+
+      function updateUI(message) {
+        alert(message);
+      }
+
+      function showError(error) {
+        alert(error.message);
+      }
+
+      var html5QrcodeScanner = new Html5QrcodeScanner(
+        "qr-reader", { fps: 10, qrbox: 250 });
+      html5QrcodeScanner.render(onScanSuccess);
+    </script>
+  </body>
+</html>
