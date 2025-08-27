@@ -1,25 +1,21 @@
 <!-- bathroom.html (included by sidebar.html) -->
 <style>
-  .container-fluid {
-    padding-top: 20px;
-  }
   #scanner-container {
-    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
   }
-  #qr-reader {
-    width: 100%;
-  }
-  #qr-reader-results {
-    margin-top: 20px;
-  }
+  #qr-reader { width: 100%; max-width: 500px; }
+  #qr-reader-results { font-size: 14px; color: var(--muted); }
 </style>
 
-<div id="mainBathroom" class="main">
-  <div class="container-fluid">
-    <h4>Bathroom Break Scanner</h4>
+<div id="mainBathroom" class="main" aria-live="polite" aria-busy="false">
+  <div class="panel" style="padding:20px;">
+    <div class="panel-title" style="margin-bottom:12px;">Bathroom Break Scanner</div>
     <div id="scanner-container">
-      <div id="qr-reader" style="width: 500px"></div>
-      <div id="qr-reader-results"></div>
+      <div id="qr-reader"></div>
+      <div id="qr-reader-results" class="muted"></div>
     </div>
   </div>
 </div>

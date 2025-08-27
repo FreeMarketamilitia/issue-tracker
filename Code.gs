@@ -182,6 +182,9 @@ function getAppState() {
   state.ssId = ss.getId();
   state.ssUrl = ss.getUrl();
 
+  // ensure new bathroom-tracking fields/sheets exist
+  ensureBathroomTrackerSetup_(ss);
+
   const roster = ss.getSheetByName(CONFIG.ROSTER_SHEET);
   const issues = ss.getSheetByName(CONFIG.ISSUES_SHEET);
   const log    = ss.getSheetByName(CONFIG.LOG_SHEET);
@@ -212,6 +215,7 @@ function buildSheets(opts) {
   ensureIssues_(ss, seed);
   ensureLog_(ss);
   ensureIssueCountsPivot_(ss);
+  ensureBathroomTrackerSetup_(ss);
 
   // bump version to invalidate caches (new build)
   _bumpVersion_(ss.getId());
@@ -248,6 +252,8 @@ function clearAllLogs() {
 
 function onOpen() {
   try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ensureBathroomTrackerSetup_(ss);
     SpreadsheetApp.getUi()
       .createMenu('Issue Logger')
       .addItem('Initialize Tracker (build tabs)', 'initializeTracker')
@@ -270,6 +276,7 @@ function initializeTracker() {
     ensureIssues_(ss, true);
     ensureLog_(ss);
     ensureIssueCountsPivot_(ss);
+    ensureBathroomTrackerSetup_(ss);
     _bumpVersion_(ss.getId()); // invalidate caches
     SpreadsheetApp.getUi().alert('Issue Logger is ready.\nUse the menu to open Sidebar / Popup / Full Screen.');
   } catch (e) {
@@ -684,8 +691,8 @@ function getSheetByName(ss, name, headers) {
   return sheet;
 }
 
-function addStudentIdColumnToRoster() {
-  const ss = _getSpreadsheet_();
+function addStudentIdColumnToRoster(ss) {
+  ss = ss || _getSpreadsheet_();
   const rosterSheet = ensureRoster_(ss);
   const headers = rosterSheet.getRange(1, 1, 1, rosterSheet.getLastColumn()).getValues()[0];
   if (headers.indexOf('Student ID') === -1) {
@@ -693,8 +700,8 @@ function addStudentIdColumnToRoster() {
   }
 }
 
-function getBathroomBreakLimit() {
-  const ss = _getSpreadsheet_();
+function getBathroomBreakLimit(ss) {
+  ss = ss || _getSpreadsheet_();
   const settingsSheet = getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
   const data = settingsSheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
@@ -706,11 +713,19 @@ function getBathroomBreakLimit() {
   return 3;
 }
 
+function ensureBathroomTrackerSetup_(ss) {
+  ss = ss || _getSpreadsheet_();
+  addStudentIdColumnToRoster(ss);
+  getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Direction', 'Duration (minutes)']);
+  getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
+  getBathroomBreakLimit(ss);
+}
+
 function processBarcode(studentId) {
   try {
     const lock = _acquireLock_(30000);
     try {
-      addStudentIdColumnToRoster();
+      ensureBathroomTrackerSetup_();
       return recordBathroomBreak(studentId);
     } finally {
       try { lock.releaseLock(); } catch (_) {}
@@ -780,7 +795,7 @@ function recordBathroomBreak(studentId) {
     bathroomLogSheet.appendRow([now, studentId, studentName, 'in', duration]);
     return `${studentName} checked back in. Duration: ${duration} minutes.`;
   } else {
-    const limit = getBathroomBreakLimit();
+    const limit = getBathroomBreakLimit(ss);
     if (tripsToday >= limit) {
       throw new Error(`${studentName} has reached the bathroom break limit of ${limit}.`);
     }
