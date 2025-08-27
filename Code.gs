@@ -228,9 +228,16 @@ function buildSheets(opts) {
 
 function clearAllLogs() {
   try {
-    const ss = _getSpreadsheet_();
-    const log = ss.getSheetByName(CONFIG.LOG_SHEET);
-    if (!log) return { ok:true, message:'No QuickLog sheet to clear.' };
+    let ss = _getSpreadsheetOrNull_();
+    if (!ss) {
+      ss = _createSpreadsheet_(APP.DEFAULT_SS_NAME);
+    }
+
+    // Ensure sheets exist (created if missing)
+    const log = getSheetByName(ss, CONFIG.LOG_SHEET,
+      ['Timestamp','Student','Period','Issue','Notes']);
+    const bath = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET,
+      ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
 
     const lock = _acquireLock_(30000);
     try {
@@ -238,7 +245,16 @@ function clearAllLogs() {
       if (lastRow > 1) {
         log.getRange(2, 1, lastRow - 1, Math.max(log.getLastColumn(), 5)).clearContent();
       }
+
+      const bathLast = bath.getLastRow();
+      if (bathLast > 1) {
+        bath.getRange(2, 1, bathLast - 1, bath.getLastColumn()).clearContent();
+      }
+
+      const counts = ss.getSheetByName(CONFIG.COUNTS_SHEET);
+      if (counts) counts.clear();
       SpreadsheetApp.flush();
+      ensureIssueCountsPivot_(ss); // rebuild analytics sheet
       _bumpVersion_(ss.getId()); // invalidate caches
       return { ok:true, message:'All logs cleared.' };
     } finally {
