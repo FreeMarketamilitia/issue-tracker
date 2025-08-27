@@ -43,21 +43,26 @@
 <script>
   const barcodeInput = document.getElementById('barcodeInput');
   barcodeInput.focus();
-  barcodeInput.addEventListener('keypress', (e)=>{
-    if(e.key==='Enter'){
+  let scanTimeout;
+  barcodeInput.addEventListener('input', () => {
+    clearTimeout(scanTimeout);
+    scanTimeout = setTimeout(() => {
       const val = barcodeInput.value.trim();
-      if(val){ handleScan(val); barcodeInput.value=''; }
-    }
+      if (val) {
+        handleScan(val);
+        barcodeInput.value = '';
+      }
+    }, 100);
   });
   function handleScan(code){
-    document.getElementById('scanResult').innerText = `Last scan: ${code}`;
+    document.getElementById('scanResult').innerText = `Processing scan: ${code}`;
     google.script.run
       .withSuccessHandler(updateUI)
       .withFailureHandler(showError)
       .processBarcode(code);
   }
   function updateUI(message){
-    alert(message);
+    document.getElementById('scanResult').innerText = message;
     if(typeof renderBathroomAnalytics === 'function'){
       renderBathroomAnalytics();
     }
@@ -65,7 +70,7 @@
     barcodeInput.focus();
   }
   function showError(error){
-    alert(error.message);
+    document.getElementById('scanResult').innerText = error.message;
     barcodeInput.focus();
   }
   function refreshStatus(){
