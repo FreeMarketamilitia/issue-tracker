@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Issue Logger</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0b0d10; --panel:#111418; --panel-alt:#0f1318;
+      --muted:#9aa6b2; --text:#e8edf3;
+      --accent:#4f8cff; --accent-2:#22c55e;
+      --danger:#ef4444; --danger-2:#7f1d1d;
+      --chip:#141923; --chip-border:#263041; --border:#1a202a;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:16px; --pad:16px; --gap:14px;
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0a0c10 0%, #0c1016 100%);color:var(--text);font-family:var(--font);line-height:1.35;}
+    .app{height:100%;display:flex;flex-direction:column;}
+
+    /* Header */
+    .header{
+      position:sticky; top:0; z-index:6;
+      background:linear-gradient(180deg, rgba(16,19,24,.95), rgba(16,19,24,.90));
+      border-bottom:1px solid var(--border);
+      backdrop-filter:saturate(140%) blur(6px);
+    }
+    .bar{
+      display:flex; align-items:center; gap:12px;
+      padding:16px clamp(12px, 4vw, 28px); max-width:1700px; margin:0 auto;
+    }
+    .brand{display:flex; align-items:center; gap:12px; font-weight:800; letter-spacing:.2px;}
+    .brand .logo{display:grid; place-items:center; width:36px; height:36px; border-radius:10px; background:#0f1521; border:1px solid #1e2a3f; box-shadow:inset 0 0 0 1px rgba(79,140,255,.12);}
+    .brand .logo .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 8px rgba(79,140,255,.10)}
+    .brand .title{font-size:18px}
+    .brand .sub{color:var(--muted); font-weight:600; font-size:12px}
+
+    .tools{margin-left:auto; display:flex; gap:12px; align-items:center; flex-wrap:wrap;}
+    .search{
+      display:flex; align-items:center; gap:8px;
+      background:var(--chip); border:1px solid var(--chip-border); border-radius:12px; padding:10px 12px;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.03);
+    }
+    .search input{ background:transparent; border:none; outline:none; color:var(--text); min-width:240px;}
+    .btn{background:var(--accent); color:#fff; border:none; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700;}
+    .btn.subtle{background:transparent; color:var(--text); border:1px solid var(--chip-border);}
+    .btn.ghost{background:transparent;border:1px dashed var(--chip-border);color:var(--muted)}
+    .muted{color:var(--muted); font-size:12px}
+
+    /* View switch (Log / Analytics) */
+    .switch{
+      background:var(--chip); border:1px solid var(--chip-border); border-radius:999px; padding:4px; display:flex; gap:4px;
+    }
+    .switch .pill{
+      padding:8px 12px; border-radius:999px; border:none; background:transparent; color:var(--text); font-weight:700; cursor:pointer;
+    }
+    .switch .pill.active{ background:var(--accent); color:#fff; box-shadow:0 4px 18px rgba(79,140,255,.35); }
+
+    /* Admin menu */
+    .menu{position:relative}
+    .menu-btn{background:transparent;border:1px solid var(--chip-border);border-radius:10px;padding:8px 10px;color:var(--text);cursor:pointer}
+    .menu-pop{
+      position:absolute; right:0; top:110%; background:#0f1521; border:1px solid #1e2a3f; border-radius:12px;
+      box-shadow:var(--shadow); min-width:240px; display:none; overflow:hidden; z-index:7;
+    }
+    .menu.open .menu-pop{display:block}
+    .menu-item{display:flex; gap:10px; align-items:center; padding:10px 12px; border-bottom:1px solid #122035; cursor:pointer;}
+    .menu-item:last-child{border-bottom:none}
+    .menu-item:hover{background:#0c1423}
+    .menu-item .hint{margin-left:auto; color:#7ea2ff; font-size:11px}
+
+    /* Period tabs */
+    .tabs{max-width:1700px; margin:0 auto; padding:0 clamp(12px, 4vw, 28px) 16px; display:flex; gap:10px; overflow:auto;}
+    .tab{border:1px solid var(--chip-border); background:var(--chip); color:var(--text); padding:8px 12px; border-radius:999px; cursor:pointer; white-space:nowrap;}
+    .tab.active{background:var(--accent); color:#fff; border-color:transparent; box-shadow:0 4px 18px rgba(79,140,255,.35);}
+
+    /* Body containers */
+    .main{flex:1; max-width:1700px; margin:0 auto; width:100%;
+      padding:16px clamp(12px, 4vw, 28px) 24px;
+      display:none;
+    }
+    .main.active{display:grid;}
+    .panel{background:linear-gradient(180deg,#121720,#0e131b); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden;}
+
+    /* ===== LOG VIEW ===== */
+    /* Left / Right layout */
+    .log-grid { grid-template-columns: 460px 1fr; gap: 18px; }
+
+    .list-head{
+      padding:12px 16px; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+
+    /* Layout toggle for list/grid */
+    .layout-toggle { display:flex; gap:6px; align-items:center; }
+    .chip-xs{
+      display:inline-flex; align-items:center; justify-content:center;
+      border:1px solid var(--chip-border); background:#0f1521; color: var(--text);
+      border-radius:999px; padding:6px 10px; font-size:12px; cursor:pointer; line-height:1; user-select:none;
+    }
+    .chip-xs.active{ background:var(--accent); border-color:transparent; color:#fff; box-shadow:0 4px 18px rgba(79,140,255,.35); }
+
+    .list{max-height:calc(100vh - 260px); overflow:auto; padding:10px; transition:all .15s ease;}
+    .filters{display:flex; gap:8px; overflow:auto; padding:10px 12px 0; border-bottom:1px dashed var(--border);}
+    .filter-chip{background:#0f1521; border:1px solid var(--chip-border); color:var(--text); padding:6px 10px; border-radius:999px; cursor:pointer; white-space:nowrap; font-size:12px;}
+    .filter-chip.active{background:var(--accent); color:#fff; border-color:transparent}
+
+    /* ==== STUDENT CARD — List layout (default) ==== */
+    .student-item{
+      display:grid; grid-template-columns: 44px 1fr; align-items:start; gap:10px 12px;
+      padding:12px; border-radius:12px; cursor:pointer;
+      transition:transform .06s ease, background .2s ease;
+      background:transparent;
+    }
+    .student-item:hover{background:var(--panel-alt)}
+    .student-item.active{outline:2px solid rgba(79,140,255,.45); background:linear-gradient(180deg, #0d131a, #0b0f14);}
+
+    .avatar{
+      width:40px; height:40px; border-radius:10px; background:#0d1420; border:1px solid #1e2a3f;
+      display:grid; place-items:center; font-weight:800; color:#c8d6ff; font-size:16px;
+    }
+
+    .student-col{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .student-meta{ display:flex; align-items:baseline; gap:8px; }
+    .student-name{ font-weight:900; letter-spacing:.2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .student-period{ font-size:12px; color:var(--muted); white-space:nowrap; }
+
+    .student-badges {
+      display:grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:6px 8px; margin-top:4px;
+    }
+    @media (max-width: 1200px){ .student-badges { grid-template-columns: 1fr; } }
+
+    .mini-badge{
+      background:#142338; border:1px solid #2a4365; color:#d6e7ff;
+      border-radius:10px; padding:6px 8px;
+      font-size:12px; font-weight:700; line-height:1.2;
+      display:flex; align-items:center; justify-content:space-between; gap:6px;
+      white-space:normal; overflow-wrap:anywhere; min-height:28px;
+    }
+
+    /* ==== GRID MODE ==== */
+    .list.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:12px; max-height:calc(100vh - 260px); overflow:auto; }
+    .list.grid .student-item{
+      grid-template-columns: 1fr; padding:12px; border:1px solid var(--border); background:#0f1521;
+    }
+    .list.grid .avatar{ width:44px; height:44px; margin-bottom:6px; }
+    .list.grid .student-col{ gap:6px; }
+    .list.grid .student-meta{ justify-content:space-between; }
+    .list.grid .student-badges{ grid-template-columns: 1fr; }
+
+    /* ===== RIGHT DETAIL PANEL ===== */
+    .detail{display:flex; flex-direction:column; height:100%;}
+    .detail-head{padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; gap:10px;}
+    .detail-name{font-size:20px; font-weight:900}
+    .detail-sub{font-size:12px; color:var(--muted)}
+    .note-wrap{display:flex; gap:10px; padding:14px 18px; align-items:center; border-bottom:1px solid var(--border);}
+    .note{flex:1; background:var(--chip); border:1px solid var(--chip-border); color:var(--text); padding:12px 14px; border-radius:12px;}
+
+    .issues-wrap{padding:18px; display:grid; gap:12px;}
+    .issue-grid{display:grid; gap:10px; grid-template-columns: repeat( auto-fit, minmax(230px, 1fr) );}
+    .chip{
+      position:relative; background:var(--chip); border:1px solid var(--chip-border); color:var(--text);
+      border-radius:14px; padding:12px 14px; cursor:pointer; text-align:left;
+      display:flex; align-items:center; justify-content:space-between; gap:10px; transition:transform .06s ease, background .2s ease;
+    }
+    .chip:hover{background:#192132}
+    .chip:active{transform:translateY(1px)}
+    .chip .label{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .actions{display:flex; align-items:center; gap:8px;}
+    .icon-btn{ width:30px; height:30px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:#0c1117; border:1px solid var(--chip-border); color:#fff; font-weight:800; cursor:pointer; }
+    .icon-btn:active{transform:translateY(1px)}
+    .icon-btn.minus{ background:var(--danger-2); border-color:#7a2e2e; color:#fecaca; }
+    .icon-btn.minus:hover{ background:#3b0b0b; }
+    .count-badge{ background:#142338; border:1px solid #2a4365; color:#cfe6ff; border-radius:999px; padding:2px 8px; font-size:12px; font-weight:800; min-width:28px; text-align:center; }
+
+    .legend{display:flex; flex-wrap:wrap; gap:12px; padding:0 18px 18px; color:var(--muted); font-size:12px;}
+    .empty{padding:28px; text-align:center; color:var(--muted);}
+
+    /* ===== ANALYTICS ===== */
+    .analytics-grid{ grid-template-columns: 1fr; gap:22px; }
+    .cards{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:18px; }
+    .card{ background:linear-gradient(180deg,#101623,#0c121a); border:1px solid var(--border); border-radius:18px; padding:18px 20px; display:flex; flex-direction:column; gap:8px; }
+    .kpi{font-size:12px; color:var(--muted); margin-top:2px;}
+    .kpi-value{font-size:34px; font-weight:900; letter-spacing:.3px; line-height:1.1;}
+    .kpi-trend{font-size:12px; color:#9fe19f;}
+    .analytics-toolbar{ display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:0 4px; }
+    .toolbar-label{font-size:12px; color:var(--muted); margin-right:6px;}
+    .chip-sm{
+      display:inline-flex; align-items:center; justify-content:center; height:32px;
+      padding:6px 12px; border-radius:999px; border:1px solid var(--chip-border);
+      background:#0f1521; color: var(--text); font-weight:700; cursor:pointer; line-height:1; user-select:none;
+    }
+    .chip-sm:hover{ background:#192132; }
+    .chip-sm.active, .chip-sm[aria-pressed="true"]{
+      background:var(--accent); border-color:transparent; color:#fff; box-shadow:0 4px 18px rgba(79,140,255,.35);
+    }
+    .section{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; }
+    .section .panel{ padding:20px; border-radius:18px; }
+    .panel-title{ font-weight:800; margin-bottom:12px; color:#dbe7ff; letter-spacing:.2px; display:flex; align-items:center; justify-content:space-between; }
+    .chart-wrap{ position:relative; width:100%; min-height: 240px; height:auto; background:#0b1119; border:1px solid #1a2332; border-radius:14px; padding:8px 10px; }
+    canvas{width:100%; height:100%}
+    .panel.table-panel{padding:0}
+    .table-toolbar{display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #1a2332;}
+    .table-wrap{max-height:420px; overflow:auto;}
+    .table{width:100%; border-collapse:separate; border-spacing:0 10px; padding:10px 12px;}
+    .table thead th{
+      position:sticky; top:0; z-index:1; background:linear-gradient(180deg, #101623, #0c121a);
+      border-bottom:1px solid #1a2332; color:#b6c6e3; font-size:12px; text-align:left; padding:8px 10px;
+    }
+    .table td{
+      padding:12px 10px; background:#0f1521; border:1px solid #1a2332; vertical-align:middle;
+    }
+    .table tr td:first-child{border-top-left-radius:12px;border-bottom-left-radius:12px;}
+    .table tr td:last-child{border-top-right-radius:12px;border-bottom-right-radius:12px;}
+    .th-btn{background:transparent;border:none;color:#b6c6e3;cursor:pointer;font-weight:700}
+    .th-btn:hover{color:#e1ecff}
+
+    /* Setup overlay */
+    .setup{
+      position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:24px; z-index:8;
+      background:linear-gradient(180deg, rgba(10,12,16,.85), rgba(12,16,22,.94));
+      backdrop-filter: blur(6px) saturate(140%);
+    }
+    .setup.active{display:flex}
+    .card-setup{
+      width:min(760px, 96vw); background:#0f1521; border:1px solid #1e2a3f; border-radius:18px; box-shadow:var(--shadow); overflow:hidden;
+    }
+    .setup-head{display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid #16253d;}
+    .setup-body{padding:18px; display:grid; gap:14px;}
+    .row{display:grid; gap:8px}
+    .label{font-size:12px; color:#9bb0d1}
+    .input, .checkbox-line{ background:#0c1423; border:1px solid #1c2b43; border-radius:12px; color:var(--text); padding:12px 14px; outline:none; }
+    .checkbox-line{display:flex; align-items:center; gap:10px; padding:10px 12px;}
+    .setup-actions{display:flex; gap:10px; justify-content:flex-end; padding:16px 18px; border-top:1px solid #16253d; background:#0d1423;}
+    .hint-row{display:flex; align-items:center; gap:10px; color:#9bb0d1; font-size:12px;}
+    .spinner{ display:none; width:16px; height:16px; border-radius:50%; border:2px solid #9bb0d1; border-top-color:transparent; animation:spin 0.8s linear infinite; }
+    .spinner.show{display:inline-block}
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Toast */
+    .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:18px; background:#0e1b0f; border:1px solid #1f3b22; color:#c8f5d0; padding:10px 14px; border-radius:10px; box-shadow:var(--shadow); opacity:0; pointer-events:none; transition:opacity .18s ease; z-index:50;}
+    .toast.show{opacity:1}
+
+    @media (max-width: 1350px){
+      .log-grid{grid-template-columns: 1fr;}
+      .list{max-height:none}
+      .cards{grid-template-columns: repeat(2, minmax(0, 1fr));}
+      .section{grid-template-columns: 1fr;}
+    }
+    @media (max-width: 700px){
+      .cards{grid-template-columns: 1fr;}
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <div class="header">
+      <div class="bar">
+        <div class="brand">
+          <div class="logo"><div class="dot"></div></div>
+          <div>
+            <div class="title">Issue Logger</div>
+            <div class="sub">tap-only • fast • full-screen</div>
+          </div>
+        </div>
+        <div class="tools">
+          <div class="switch" role="tablist" aria-label="View switch">
+            <button id="viewLog" class="pill active" role="tab" aria-selected="true">Log</button>
+            <button id="viewAnalytics" class="pill" role="tab" aria-selected="false">Analytics</button>
+          </div>
+          <div class="search" title="Search students">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 21l-4.35-4.35M10.5 18a 7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <input id="search" type="search" placeholder="Search students…" />
+          </div>
+          <button id="refresh" class="btn subtle" disabled>Refresh</button>
+          <button id="openSheet" class="btn ghost" style="display:none;">Open Sheet</button>
+
+          <!-- Admin menu -->
+          <div class="menu" id="adminMenu">
+            <button class="menu-btn" id="menuToggle">⋯</button>
+            <div class="menu-pop" role="menu" aria-label="Admin">
+              <div class="menu-item" id="menuBuild" role="menuitem">Build Sheets <span class="hint">first run</span></div>
+              <div class="menu-item" id="menuClear" role="menuitem">Delete All Logs</div>
+              <div class="menu-item" id="menuOpen" role="menuitem">Open Data Spreadsheet</div>
+            </div>
+          </div>
+
+          <button id="closeBtn" class="btn subtle" style="display:none;">Close</button>
+        </div>
+      </div>
+      <div id="tabs" class="tabs"></div>
+    </div>
+
+    <!-- LOG VIEW -->
+    <div id="mainLog" class="main log-grid active" aria-live="polite" aria-busy="false">
+      <div class="panel">
+        <div class="list-head">
+          <div class="muted"><span id="countLabel">0</span> students</div>
+          <div class="layout-toggle" aria-label="Layout mode">
+            <button id="btnListMode" class="chip-xs active" title="List layout">List</button>
+            <button id="btnGridMode" class="chip-xs" title="Grid layout">Grid</button>
+          </div>
+        </div>
+        <div id="issueFilters" class="filters"></div>
+        <div id="studentList" class="list"></div>
+      </div>
+
+      <div class="panel detail">
+        <div class="detail-head">
+          <div>
+            <div class="detail-name" id="detailName">Select a student</div>
+            <div class="detail-sub" id="detailSub"></div>
+          </div>
+        </div>
+        <div class="note-wrap">
+          <input id="note" class="note" placeholder="Add note (optional)…" />
+          <button id="clearNote" class="btn subtle">Clear</button>
+        </div>
+        <div class="issues-wrap">
+          <div class="issue-grid" id="issueGrid"></div>
+        </div>
+        <div class="legend">
+          <div>• Click an issue chip to <b>+1</b></div>
+          <div>• Click the <b>−</b> button on a chip to <b>−1</b> (undo)</div>
+        </div>
+        <div id="empty" class="empty" style="display:none;">
+          Add names to <b>Roster</b> and labels to <b>Issues</b>, then click Refresh.
+        </div>
+      </div>
+    </div>
+
+    <!-- ANALYTICS VIEW (included from analytics.html) -->
+    <?!= HtmlService.createHtmlOutputFromFile('analytics').getContent(); ?>
+
+  </div>
+
+  <!-- First-run setup overlay -->
+  <div id="setup" class="setup">
+    <div class="card-setup">
+      <div class="setup-head">
+        <div class="logo"><div class="dot"></div></div>
+        <div>
+          <div style="font-weight:900;">Create your data spreadsheet</div>
+          <div class="muted">We’ll build <b>Roster</b>, <b>Issues</b>, <b>QuickLog</b>, and <b>IssueCounts</b> in your Drive.</div>
+        </div>
+      </div>
+      <div class="setup-body">
+        <div class="row">
+          <label class="label" for="ssName">Spreadsheet name</label>
+          <input id="ssName" class="input" value="Issue Logger (Data)" />
+        </div>
+        <div class="checkbox-line">
+          <input id="seedDemo" type="checkbox" checked />
+          <label for="seedDemo">Add a few demo students & issues</label>
+        </div>
+        <div class="hint-row">
+          <div class="spinner" id="setupSpinner"></div>
+          <div id="setupHint">Created in the Google Drive of whoever clicks “Build Sheets”.</div>
+        </div>
+      </div>
+      <div class="setup-actions">
+        <button id="setupCancel" class="btn ghost">Skip for now</button>
+        <button id="setupBuild" class="btn">Build Sheets</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite">Saved.</div>
+
+  <script>
+  // -------------------- State --------------------
+  let APP = { attached:false, ssId:null, ssUrl:null };
+  let DATA = { periods: [], perMap: {}, issues: [] };
+  let COUNTS = { issues: [], rows: [] };
+  let currentPeriod = null;
+  let currentStudent = null;
+  let searchTerm = '';
+  let lastIssueIndex = null;
+  let currentView = 'log';
+  const activeIssueFilters = new Set();
+
+  // Layout: 'list' | 'grid'
+  let studentLayout = 'list';
+
+  // Analytics UI state
+  const analyticsConfig = {
+    topStudentsN: 10,
+    density: 'comfortable', // 'compact' | 'comfortable'
+    tableSort: { key:'total', dir:'desc' } // 'student'|'total'|'top'
+  };
+
+  const $ = q => document.querySelector(q);
+  const $$ = q => Array.from(document.querySelectorAll(q));
+  const debounce = (fn, ms=180) => { let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args),ms); }; };
+  const setActiveChip = (selector, isActive)=> $$(selector).forEach(el=> el.classList.toggle('active', isActive(el)));
+
+  function toast(msg){ const t=$('#toast'); t.textContent = msg || 'Saved'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1400); }
+  function el(tag, attrs={}, ...kids){
+    const e = document.createElement(tag);
+    for (const [k,v] of Object.entries(attrs||{})){
+      if (k==='class') e.className=v;
+      else if (k==='html') e.innerHTML=v;
+      else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      else if (k==='dataset') Object.entries(v).forEach(([dk,dv])=> e.dataset[dk]=dv);
+      else e.setAttribute(k,v);
+    }
+    for (const k of kids){ if (k==null) continue; e.appendChild(typeof k==='string'?document.createTextNode(k):k); }
+    return e;
+  }
+
+  // ==================== First-run bootstrap ====================
+  function bootstrap(){
+    $('#mainLog').setAttribute('aria-busy','true');
+    $('#mainAnalytics').setAttribute('aria-busy','true');
+    google.script.run.withSuccessHandler((state)=>{
+      APP = { attached: !!state?.attached, ssId: state?.ssId || null, ssUrl: state?.ssUrl || null };
+
+      $('#openSheet').style.display = APP.ssUrl ? 'inline-flex' : 'none';
+      $('#refresh').disabled = !APP.attached;
+      $('#menuBuild').style.display = APP.attached ? 'none' : 'flex';
+
+      if (!APP.attached){
+        showSetup(true);
+      } else {
+        showSetup(false);
+        load();
+      }
+      $('#mainLog').setAttribute('aria-busy','false');
+      $('#mainAnalytics').setAttribute('aria-busy','false');
+
+      initAnalyticsToolbar();
+      initLayoutToggle();
+    }).getAppState();
+  }
+  function showSetup(show){ $('#setup').classList.toggle('active', !!show); }
+
+  // ==================== Layout Toggle ====================
+  function initLayoutToggle(){
+    const listBtn = $('#btnListMode');
+    const gridBtn = $('#btnGridMode');
+
+    function update(){
+      listBtn.classList.toggle('active', studentLayout === 'list');
+      gridBtn.classList.toggle('active', studentLayout === 'grid');
+      $('#studentList').classList.toggle('grid', studentLayout === 'grid');
+      renderStudents();
+    }
+
+    listBtn.addEventListener('click', ()=>{ studentLayout = 'list'; update(); });
+    gridBtn.addEventListener('click', ()=>{ studentLayout = 'grid'; update(); });
+    update();
+  }
+
+  // ==================== View Switch ====================
+  function setView(view){
+    currentView = view;
+    $('#viewLog').classList.toggle('active', view==='log');
+    $('#viewAnalytics').classList.toggle('active', view==='analytics');
+    $('#mainLog').classList.toggle('active', view==='log');
+    $('#mainAnalytics').classList.toggle('active', view==='analytics');
+    if (view === 'analytics') renderAnalytics(); // use local COUNTS
+  }
+
+  // ==================== Period Tabs & Switching ====================
+  function setPeriod(p){
+    currentPeriod = p;
+    currentStudent = null;
+
+    // Optional: clear filters and search to avoid carry-over
+    activeIssueFilters.clear();
+    searchTerm = '';
+    const searchInput = document.getElementById('search');
+    if (searchInput) searchInput.value = '';
+
+    // Optimistic UI render
+    renderTabs();
+
+    // Fetch counts for the selected period
+    google.script.run.withSuccessHandler((snap)=>{
+      COUNTS = snap || { issues:[], rows:[] };
+
+      renderFilters();
+      renderStudents();
+      renderDetail();
+      if (currentView === 'analytics') renderAnalytics();
+    }).getCountsSnapshot(currentPeriod);
+  }
+
+  function renderTabs(){
+    const wrap = $('#tabs'); wrap.innerHTML = '';
+    DATA.periods.forEach(p=>{
+      wrap.appendChild(el('button', {
+        class: 'tab' + (p===currentPeriod?' active':''), role:'tab',
+        onclick: ()=> setPeriod(p)
+      }, p));
+    });
+  }
+
+  // ==================== Filters (issues) ====================
+  function renderFilters(){
+    const host = $('#issueFilters'); host.innerHTML = '';
+    if (!COUNTS.issues.length) return;
+
+    COUNTS.issues.forEach((label, idx)=>{
+      const chip = el('button', {
+        class:'filter-chip' + (activeIssueFilters.has(idx)?' active':''),
+        onclick: ()=>{
+          if (activeIssueFilters.has(idx)) activeIssueFilters.delete(idx);
+          else activeIssueFilters.add(idx);
+          renderFilters();
+          renderStudents();
+        }
+      }, label);
+      host.appendChild(chip);
+    });
+
+    if (activeIssueFilters.size){
+      host.appendChild(
+        el('button', {
+          class:'filter-chip',
+          onclick: ()=>{
+            activeIssueFilters.clear();
+            renderFilters();
+            renderStudents();
+          }
+        }, 'Clear filters')
+      );
+    }
+  }
+
+  // ==================== Students ====================
+  function renderStudents(){
+    const list = $('#studentList'); list.innerHTML = '';
+    const namesAll = (DATA.perMap[currentPeriod] || []);
+    const names = namesAll
+      .filter(n => n.toLowerCase().includes(searchTerm))
+      .filter(n => {
+        if (!activeIssueFilters.size) return true;
+        const row = (COUNTS.rows || []).find(r => r.student === n);
+        if (!row) return false;
+        for (const idx of activeIssueFilters) if ((row.counts[idx]||0) > 0) return true;
+        return false;
+      });
+
+    $('#countLabel').textContent = names.length;
+
+    names.forEach((name)=>{
+      if (studentLayout === 'grid'){
+        const card = el('div', { class:'student-item' + (name===currentStudent?' active':''), onclick: ()=> selectStudent(name) },
+          el('div', { class:'avatar' }, name.trim().charAt(0).toUpperCase() || 'S'),
+          el('div', { class:'student-col' },
+            el('div', { class:'student-meta' },
+              el('div', { class:'student-name' }, name),
+              el('div', { class:'student-period' }, currentPeriod || '')
+            ),
+            el('div', { class:'student-badges' }, el('span', { class:'muted' }, '—'))
+          )
+        );
+        card.dataset.name = name;
+        list.appendChild(card);
+      } else {
+        const row = el('div', { class:'student-item' + (name===currentStudent?' active':''), onclick: ()=> selectStudent(name) },
+          el('div', { class:'avatar' }, name.trim().charAt(0).toUpperCase() || 'S'),
+          el('div', { class:'student-col' },
+            el('div', { class:'student-meta' },
+              el('div', { class:'student-name' }, name),
+              el('div', { class:'student-period' }, currentPeriod || '')
+            ),
+            el('div', { class:'student-badges' }, el('span', { class:'muted' }, '—'))
+          )
+        );
+        row.dataset.name = name;
+        list.appendChild(row);
+      }
+    });
+
+    fillListBadges();
+    if (!currentStudent && names.length) selectStudent(names[0]);
+  }
+
+  /**
+   * Populate per-student top issue badges.
+   * Shows up to 5 most frequent issues per student.
+   */
+  function fillListBadges(){
+    if (!COUNTS.issues.length) return;
+    const map = new Map(COUNTS.rows.map(r => [r.student, r.counts]));
+
+    $$('.student-item').forEach(row => {
+      const name = row.dataset.name;
+      const counts = map.get(name) || [];
+      const pairs = COUNTS.issues.map((lab, i) => ({ lab, val: counts[i] || 0 }))
+        .filter(p => p.val > 0)
+        .sort((a, b) => b.val - a.val)
+        .slice(0, 5);
+
+      const host = row.querySelector('.student-badges');
+      host.innerHTML = '';
+
+      if (!pairs.length) {
+        host.appendChild(el('span', { class: 'muted' }, '—'));
+        return;
+      }
+
+      pairs.forEach(p => {
+        host.appendChild(el('div', { class: 'mini-badge' },
+          el('span', {}, p.lab),
+          el('strong', {}, String(p.val))
+        ));
+      });
+    });
+  }
+
+  function selectStudent(name){
+    currentStudent = name;
+    $$('.student-item').forEach(r=> r.classList.toggle('active', r.dataset.name===name));
+    renderDetail();
+  }
+
+  // ==================== Detail panel ====================
+  function renderDetail(){
+    const nameBox = $('#detailName');
+    const subBox = $('#detailSub');
+    const grid = $('#issueGrid');
+    const empty = $('#empty');
+
+    grid.innerHTML = '';
+    if (!currentStudent || !DATA.issues.length){
+      nameBox.textContent = currentStudent ? currentStudent : 'Select a student';
+      subBox.textContent = currentPeriod || '';
+      empty.style.display = (!DATA.issues.length || !DATA.periods.length) ? 'block' : 'none';
+      return;
+    }
+    nameBox.textContent = currentStudent;
+    subBox.textContent = currentPeriod || '';
+    empty.style.display = 'none';
+
+    const idxByIssue = new Map(COUNTS.issues.map((lab,i)=>[lab,i]));
+    const countsArr = (COUNTS.rows.find(r=>r.student===currentStudent) || { counts: [] }).counts || [];
+
+    const selectedStudent = currentStudent;
+    const selectedPeriod = currentPeriod;
+
+    DATA.issues.forEach((issue, i)=>{
+      const idx = idxByIssue.has(issue) ? idxByIssue.get(issue) : -1;
+      const val = idx>=0 ? (countsArr[idx]||0) : 0;
+
+      const chip = el('div', { class:'chip' },
+        el('span', {
+          class:'label',
+          title:'Click to +1',
+          onclick: ()=> increment(issue, i, selectedStudent, selectedPeriod)
+        }, issue),
+        el('div', { class:'actions' },
+          el('button', {
+            class:'icon-btn minus',
+            title:'-1 (undo)',
+            onclick: (ev)=>{ ev.stopPropagation(); decrement(issue, i, selectedStudent, selectedPeriod); }
+          }, '−'),
+          el('span', { class:'count-badge', id:`cnt_${i}` }, String(val))
+        )
+      );
+      grid.appendChild(chip);
+    });
+  }
+
+  // ==================== Fast local updates ====================
+  function applyDeltaToCounts(studentName, issueLabel, delta) {
+    if (!studentName || !issueLabel) return;
+
+    const namesInPeriod = (DATA.perMap[currentPeriod] || []);
+    if (!namesInPeriod.includes(studentName)) return;
+
+    const issueIdx = COUNTS.issues.indexOf(issueLabel);
+    if (issueIdx < 0) return;
+
+    let row = COUNTS.rows.find(r => r.student === studentName);
+    if (!row) {
+      row = { student: studentName, counts: new Array(COUNTS.issues.length).fill(0) };
+      COUNTS.rows.push(row);
+    }
+    if (row.counts.length < COUNTS.issues.length) {
+      const diff = COUNTS.issues.length - row.counts.length;
+      row.counts.push(...new Array(diff).fill(0));
+    }
+
+    const val = (row.counts[issueIdx] || 0) + delta;
+    row.counts[issueIdx] = Math.max(0, val);
+  }
+
+  function updateDetailAndBadges(studentName, issueIndexForBadge) {
+    if (currentStudent === studentName) {
+      const idxByIssue = new Map(COUNTS.issues.map((lab,i)=>[lab,i]));
+      const issueLabel = DATA.issues[issueIndexForBadge];
+      const idx = idxByIssue.get(issueLabel);
+      if (idx != null) {
+        const row = COUNTS.rows.find(r => r.student === studentName);
+        const v = row ? (row.counts[idx]||0) : 0;
+        const badge = document.getElementById(`cnt_${issueIndexForBadge}`);
+        if (badge) badge.textContent = String(v);
+      }
+    }
+    fillListBadges();
+    if (currentView === 'analytics') renderAnalytics();
+  }
+
+  // ==================== Increment / Decrement ====================
+  function increment(issue, issueIndex, studentName, periodName){
+    if (!studentName) return;
+    const notes = ($('#note').value || '').trim();
+    lastIssueIndex = issueIndex;
+
+    applyDeltaToCounts(studentName, issue, +1);
+    updateDetailAndBadges(studentName, issueIndex);
+    $('#note').value = '';
+
+    google.script.run.withSuccessHandler((res)=>{
+      if (res && res.ok){
+        toast(`+1 ${issue} for ${studentName}`);
+      } else {
+        applyDeltaToCounts(studentName, issue, -1);
+        updateDetailAndBadges(studentName, issueIndex);
+        toast((res && res.message) ? res.message : 'Failed to save');
+      }
+    }).logEntries({ entries: [{ student: studentName, issue, notes }] });
+  }
+
+  function decrement(issue, issueIndex, studentName, periodName){
+    if (!studentName) return;
+
+    const idxByIssue = new Map(COUNTS.issues.map((lab,i)=>[lab,i]));
+    const idx = idxByIssue.get(issue);
+    const row = COUNTS.rows.find(r => r.student === studentName);
+    if (!row || !row.counts || (row.counts[idx]||0) <= 0){
+      toast('Nothing to undo');
+      return;
+    }
+
+    applyDeltaToCounts(studentName, issue, -1);
+    updateDetailAndBadges(studentName, issueIndex);
+
+    google.script.run.withSuccessHandler((res)=>{
+      if (res && res.ok){
+        toast(`−1 ${issue} for ${studentName}`);
+      } else {
+        applyDeltaToCounts(studentName, issue, +1);
+        updateDetailAndBadges(studentName, issueIndex);
+        const msg = (res && res.message) ? res.message : 'Nothing to undo';
+        toast(msg);
+      }
+    }).deleteLastEntry({ student: studentName, issue, period: periodName });
+  }
+
+  // ==================== Data loaders ====================
+  function load(){
+    $('#refresh').disabled = true;
+    google.script.run.withSuccessHandler((data)=>{
+      DATA = data || { periods:[], perMap:{}, issues:[] };
+      if (!DATA.periods.length){
+        $('#tabs').innerHTML = '';
+        $('#studentList').innerHTML=''; $('#issueGrid').innerHTML=''; $('#empty').style.display='block';
+        $('#refresh').disabled = false;
+        return;
+      }
+      if (!currentPeriod) currentPeriod = DATA.periods[0];
+      renderTabs();
+
+      google.script.run.withSuccessHandler((snap)=>{
+        COUNTS = snap || { issues:[], rows:[] };
+        renderFilters(); renderStudents(); renderDetail();
+        if (currentView==='analytics') renderAnalytics();
+        $('#refresh').disabled = false;
+      }).getCountsSnapshot(currentPeriod);
+    }).getData();
+  }
+
+  // ==================== Analytics ====================
+  function initAnalyticsToolbar(){
+    setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=>{
+      const v = el.getAttribute('data-topn');
+      return (v==='all' && analyticsConfig.topStudentsN==='all') || (+v===analyticsConfig.topStudentsN);
+    });
+    setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
+
+    $$('.analytics-toolbar .chip-sm[data-topn]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const v = btn.getAttribute('data-topn');
+        analyticsConfig.topStudentsN = (v==='all') ? 'all' : parseInt(v,10);
+        setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=> el===btn);
+        if (currentView==='analytics') renderAnalytics();
+      });
+    });
+    $$('.analytics-toolbar .chip-sm[data-density]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        analyticsConfig.density = btn.getAttribute('data-density');
+        setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el===btn);
+        if (currentView==='analytics') renderAnalytics();
+      });
+    });
+
+    $$('#analyticsTable thead .th-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const key = btn.getAttribute('data-sort'); // student|total|top
+        if (analyticsConfig.tableSort.key === key){
+          analyticsConfig.tableSort.dir = (analyticsConfig.tableSort.dir==='asc'?'desc':'asc');
+        } else {
+          analyticsConfig.tableSort.key = key;
+          analyticsConfig.tableSort.dir = (key==='student'?'asc':'desc');
+        }
+        renderAnalytics();
+      });
+    });
+  }
+
+  function renderAnalytics(){
+    const totalsByIssue = (COUNTS.issues || []).map((lab, i)=>{
+      let sum = 0; (COUNTS.rows||[]).forEach(r => sum += (r.counts[i]||0)); return { lab, sum };
+    });
+    const totalsByStudent = (COUNTS.rows||[]).map(r => ({ student: r.student, sum: (r.counts||[]).reduce((a,b)=>a+(b||0),0) }));
+
+    const totalLogs = totalsByIssue.reduce((a,b)=>a+b.sum,0);
+    const zeroStudents = totalsByStudent.filter(s => s.sum===0).length;
+    const topIssue = totalsByIssue.slice().sort((a,b)=>b.sum-a.sum)[0] || {lab:'—', sum:0};
+    const topStudent = totalsByStudent.slice().sort((a,b)=>b.sum-a.sum)[0] || {student:'—', sum:0};
+    const issueVariety = totalsByIssue.filter(x => x.sum>0).length;
+
+    $('#kpiTotal').textContent = String(totalLogs);
+    $('#kpiZero').textContent = `${zeroStudents} student${zeroStudents===1?'':'s'} with zero issues`;
+    $('#kpiTopIssue').textContent = topIssue.lab || '—';
+    $('#kpiTopIssueCount').textContent = topIssue.sum ? `${topIssue.sum} total` : '';
+    $('#kpiTopStudent').textContent = topStudent.student || '—';
+    $('#kpiTopStudentCount').textContent = topStudent.sum ? `${topStudent.sum} total` : '';
+    $('#kpiIssueVariety').textContent = String(issueVariety);
+
+    drawBarChart($('#chartIssues'),
+      totalsByIssue.map(x=>x.lab),
+      totalsByIssue.map(x=>x.sum),
+      { title:'Issues', maxBars: 14, density: analyticsConfig.density }
+    );
+
+    let studentsSorted = totalsByStudent.sort((a,b)=>b.sum-a.sum);
+    if (analyticsConfig.topStudentsN !== 'all'){
+      studentsSorted = studentsSorted.slice(0, analyticsConfig.topStudentsN);
+    }
+    drawBarChart($('#chartStudents'),
+      studentsSorted.map(x=>x.student),
+      studentsSorted.map(x=>x.sum),
+      { title:'Students', maxBars: (analyticsConfig.topStudentsN==='all'? 18 : analyticsConfig.topStudentsN), density: analyticsConfig.density }
+    );
+
+    const rows = (COUNTS.rows||[]).map(r=>{
+      const sum = (r.counts||[]).reduce((a,b)=>a+(b||0),0);
+      let best = { lab:'—', val:0 };
+      (COUNTS.issues||[]).forEach((lab,i)=>{ const v=r.counts[i]||0; if (v>best.val) best={lab, val:v}; });
+      return { student:r.student, total:sum, top:`${best.lab}${best.val?` (${best.val})`:''}` };
+    });
+
+    rows.sort((a,b)=>{
+      const dir = analyticsConfig.tableSort.dir==='asc'?1:-1;
+      const key = analyticsConfig.tableSort.key;
+      if (key==='student') return a.student.localeCompare(b.student)*dir;
+      if (key==='top') return a.top.localeCompare(b.top)*dir;
+      return (a.total - b.total) * dir;
+    });
+
+    const tbody = $('#analyticsTable tbody'); tbody.innerHTML='';
+    rows.forEach(r=>{
+      const tr = document.createElement('tr');
+      tr.append(el('td', {}, r.student), el('td', {}, String(r.total)), el('td', {}, r.top||'—'));
+      tbody.appendChild(tr);
+    });
+
+    setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=>{
+      const v = el.getAttribute('data-topn');
+      return (v==='all' && analyticsConfig.topStudentsN==='all') || (+v===analyticsConfig.topStudentsN);
+    });
+    setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
+  }
+
+  // Improved bar chart: ensures labels and values don't overlap content
+  function drawBarChart(canvas, labels, values, opts = {}) {
+    const DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    const density = opts.density || 'comfortable';
+    const isCompact = density === 'compact';
+    const barGap = isCompact ? 8 : 12;
+    const barHFixed = isCompact ? 18 : 24;
+
+    const labelLeftPad = 12;
+    const labelToBarGap = 14;
+
+    const basePadR = 20;
+    const padT = 24, padB = 40;
+
+    const maxBars = opts.maxBars || 14;
+    if (labels.length > maxBars) {
+      const idxs = labels.map((_, i) => i).slice(0, maxBars);
+      labels = idxs.map(i => labels[i]);
+      values = idxs.map(i => values[i]);
+    }
+
+    const w = canvas.clientWidth || 600;
+    const desiredH = padT + padB + (labels.length * barHFixed) + ((labels.length - 1) * barGap);
+    const h = Math.max(canvas.clientHeight || 360, desiredH);
+
+    canvas.width = Math.floor(w * DPR);
+    canvas.height = Math.floor(h * DPR);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0b1119';
+    ctx.fillRect(0, 0, w, h);
+
+    const fontFamily = (getComputedStyle(document.documentElement).getPropertyValue('--font') || 'ui-sans-serif');
+    ctx.font = '12px ' + fontFamily;
+    ctx.textBaseline = 'middle';
+
+    let maxLabelWidth = 0;
+    for (const lab of labels) {
+      const wTxt = ctx.measureText(lab).width;
+      if (wTxt > maxLabelWidth) maxLabelWidth = wTxt;
+    }
+    const padL = Math.ceil(labelLeftPad + maxLabelWidth + labelToBarGap);
+
+    let maxValTextWidth = 0;
+    for (const v of values) {
+      const s = String(v);
+      const wTxt = ctx.measureText(s).width;
+      if (wTxt > maxValTextWidth) maxValTextWidth = wTxt;
+    }
+    const padR = basePadR + maxValTextWidth + 10;
+
+    const innerW = Math.max(1, w - padL - padR);
+    const innerH = h - padT - padB;
+
+    ctx.strokeStyle = '#1a2332';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, h - padB + 0.5);
+    ctx.lineTo(w - padR, h - padB + 0.5);
+    ctx.stroke();
+
+    const maxVal = Math.max(1, ...values);
+
+    ctx.fillStyle = '#8aa0bf';
+    ctx.textAlign = 'left';
+    ctx.fillText('0', padL, h - padB + 12);
+    ctx.textAlign = 'right';
+    ctx.fillText(String(maxVal), (w - padR), h - padB + 12);
+
+    for (let i = 0; i < labels.length; i++) {
+      const y = padT + i * (barHFixed + barGap);
+      const ratio = values[i] / maxVal;
+      const bw = Math.round(ratio * innerW);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#cfe6ff';
+      ctx.fillText(labels[i], labelLeftPad, y + barHFixed / 2);
+
+      ctx.fillStyle = '#101725';
+      ctx.fillRect(padL, y, innerW, barHFixed);
+
+      const grad = ctx.createLinearGradient(padL, y, padL + Math.max(bw, 1), y);
+      grad.addColorStop(0, '#4f8cff');
+      grad.addColorStop(1, '#80b3ff');
+      ctx.fillStyle = grad;
+      ctx.fillRect(padL, y, bw, barHFixed);
+
+      ctx.fillStyle = '#e6f0ff';
+      ctx.textAlign = 'right';
+      const valText = String(values[i]);
+      const valX = w - 6;
+      ctx.fillText(valText, valX, y + barHFixed / 2);
+    }
+  }
+
+  // ==================== Keyboard (optional) ====================
+  document.addEventListener('keydown', (e)=>{
+    if (currentView !== 'log') return;
+    if (studentLayout === 'grid') return; // skip keyboard nav in grid mode
+    const names = (DATA.perMap[currentPeriod]||[]).filter(n=>n.toLowerCase().includes(searchTerm));
+    if (!names.length) return;
+
+    const idx = names.indexOf(currentStudent);
+    if (e.key === 'ArrowDown'){ const next = names[Math.min(idx+1, names.length-1)]; if (next){ selectStudent(next); ensureVisible(next); } }
+    else if (e.key === 'ArrowUp'){ const prev = names[Math.max(idx-1, 0)]; if (prev){ selectStudent(prev); ensureVisible(prev); } }
+  });
+
+  function ensureVisible(name){
+    const list = $('#studentList');
+    const row = $(`.student-item[data-name="${CSS.escape(name)}"]`);
+    if (!row || !list) return;
+    const rTop = row.offsetTop, rBottom = rTop + row.offsetHeight;
+    const vTop = list.scrollTop, vBottom = vTop + list.clientHeight;
+    if (rTop < vTop) list.scrollTop = rTop - 6;
+    if (rBottom > vBottom) list.scrollTop = rBottom - list.clientHeight + 6;
+  }
+
+  // ==================== Admin & setup actions ====================
+  $('#menuToggle').addEventListener('click', ()=> $('#adminMenu').classList.toggle('open'));
+  document.addEventListener('click', (e)=>{ if (!e.target.closest('#adminMenu')) $('#adminMenu').classList.remove('open'); });
+  $('#menuBuild').addEventListener('click', ()=>{ $('#adminMenu').classList.remove('open'); showSetup(true); });
+  $('#menuClear').addEventListener('click', ()=>{
+    $('#adminMenu').classList.remove('open');
+    if (!APP.attached) return toast('Sheets not set up yet.');
+    if (!confirm('Delete ALL logs in QuickLog? This cannot be undone.')) return;
+    google.script.run.withSuccessHandler((res)=>{
+      toast(res && res.message || 'Cleared.');
+      COUNTS = { issues: COUNTS.issues, rows: [] };
+      renderStudents(); renderDetail();
+      if (currentView==='analytics') renderAnalytics();
+    }).clearAllLogs();
+  });
+  $('#menuOpen').addEventListener('click', ()=>{
+    $('#adminMenu').classList.remove('open');
+    if (APP.ssUrl) window.open(APP.ssUrl, '_blank'); else toast('No spreadsheet yet.');
+  });
+
+  $('#setupBuild').addEventListener('click', ()=>{
+    const name = ($('#ssName').value || '').trim() || 'Issue Logger (Data)';
+    const seed = $('#seedDemo').checked;
+    $('#setupSpinner').classList.add('show');
+    $('#setupBuild').disabled = true; $('#setupCancel').disabled = true;
+    google.script.run.withSuccessHandler((res)=>{
+      $('#setupSpinner').classList.remove('show');
+      $('#setupBuild').disabled = false; $('#setupCancel').disabled = false;
+      if (res && res.ok){
+        APP.attached = true; APP.ssId = res.ssId; APP.ssUrl = res.ssUrl;
+        $('#openSheet').style.display = APP.ssUrl ? 'inline-flex' : 'none';
+        $('#refresh').disabled = false; $('#menuBuild').style.display = 'none';
+        toast('Sheets built.'); showSetup(false); load();
+      } else { toast(res && res.message ? res.message : 'Build failed.'); }
+    }).buildSheets({ seed, name });
+  });
+  $('#setupCancel').addEventListener('click', ()=> showSetup(false));
+
+  $('#openSheet').addEventListener('click', ()=> APP.ssUrl ? window.open(APP.ssUrl, '_blank') : toast('No spreadsheet yet.'));
+  $('#search').addEventListener('input', debounce((e)=>{ searchTerm = (e.target.value || '').trim().toLowerCase(); renderStudents(); }, 120));
+  $('#refresh').addEventListener('click', ()=> { if (!APP.attached) return; load(); if (currentView==='analytics') setTimeout(renderAnalytics, 50); });
+  $('#clearNote').addEventListener('click', ()=> $('#note').value='');
+  $('#viewLog').addEventListener('click', ()=> setView('log'));
+  $('#viewAnalytics').addEventListener('click', ()=> setView('analytics'));
+
+  // Allow close when running in a modal dialog
+  try {
+    if (google && google.script && google.script.host && google.script.host.close) {
+      const btn = $('#closeBtn'); btn.style.display='inline-flex'; btn.addEventListener('click', ()=> google.script.host.close());
+    }
+  } catch(_) {}
+
+  // Start
+  bootstrap();
+  </script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!-- analytics.html (included by sidebar.html) -->
+<div id="mainAnalytics" class="main analytics-grid" aria-live="polite" aria-busy="false">
+
+  <!-- Sub-head with current period -->
+  <div class="panel" style="padding:14px 16px;">
+    <div class="panel-title" style="margin:0;">
+      <div>
+        <span style="opacity:.9; font-weight:700;">Analytics</span>
+        <span id="analyticsPeriodLabel" class="muted" style="margin-left:10px;">(Current period)</span>
+      </div>
+      <div class="muted" style="font-size:12px;">Snapshot computed live from QuickLog</div>
+    </div>
+  </div>
+
+  <!-- Cards / KPIs -->
+  <div class="cards" aria-label="Key performance indicators">
+    <div class="card" role="group" aria-labelledby="kpiTotalLbl">
+      <div id="kpiTotalLbl" class="kpi">Total Logs (period)</div>
+      <div class="kpi-value" id="kpiTotal">0</div>
+      <div class="kpi-trend" id="kpiZero">0 students with zero issues</div>
+    </div>
+    <div class="card" role="group" aria-labelledby="kpiTopIssueLbl">
+      <div id="kpiTopIssueLbl" class="kpi">Top Issue</div>
+      <div class="kpi-value" id="kpiTopIssue">—</div>
+      <div class="kpi-trend" id="kpiTopIssueCount"></div>
+    </div>
+    <div class="card" role="group" aria-labelledby="kpiTopStudentLbl">
+      <div id="kpiTopStudentLbl" class="kpi">Most Logged Student</div>
+      <div class="kpi-value" id="kpiTopStudent">—</div>
+      <div class="kpi-trend" id="kpiTopStudentCount"></div>
+    </div>
+    <div class="card" role="group" aria-labelledby="kpiVarietyLbl">
+      <div id="kpiVarietyLbl" class="kpi">Distinct Issues Used</div>
+      <div class="kpi-value" id="kpiIssueVariety">0</div>
+      <div class="kpi-trend">across this period</div>
+    </div>
+  </div>
+
+  <!-- Toolbar for chart density and number of students -->
+  <div class="analytics-toolbar" aria-label="Chart options">
+    <span class="toolbar-label">Top students:</span>
+    <button class="chip-sm" data-topn="5" aria-pressed="false">5</button>
+    <button class="chip-sm" data-topn="10" aria-pressed="true">10</button>
+    <button class="chip-sm" data-topn="15" aria-pressed="false">15</button>
+    <button class="chip-sm" data-topn="all" aria-pressed="false">All</button>
+    <span class="toolbar-label" style="margin-left:14px;">Density:</span>
+    <button class="chip-sm" data-density="compact" aria-pressed="false">Compact</button>
+    <button class="chip-sm" data-density="comfortable" aria-pressed="true">Comfortable</button>
+  </div>
+
+  <!-- Charts -->
+  <div class="section" aria-label="Charts">
+    <div class="panel">
+      <div class="panel-title">Issue Distribution</div>
+      <div class="chart-wrap">
+        <canvas id="chartIssues" aria-label="Issue distribution bar chart" role="img"></canvas>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Top Students</div>
+      <div class="chart-wrap">
+        <canvas id="chartStudents" aria-label="Top students bar chart" role="img"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="panel table-panel" aria-label="Student details table">
+    <div class="table-toolbar">
+      <div class="panel-title" style="margin:0">Details (Current Period)</div>
+      <div class="muted">Tip: click headers to sort</div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="analyticsTable">
+        <thead>
+          <tr>
+            <th><button class="th-btn" data-sort="student" aria-label="Sort by student">Student</button></th>
+            <th style="width:120px"><button class="th-btn" data-sort="total" aria-label="Sort by total">Total</button></th>
+            <th><button class="th-btn" data-sort="top" aria-label="Sort by top issue">Top Issue</button></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Empty state (shown optionally if no data) -->
+  <div id="analyticsEmpty" class="panel" style="padding:20px; display:none;">
+    <div class="panel-title" style="margin-bottom:6px;">Nothing to show yet</div>
+    <div class="muted">
+      Add some students to <b>Roster</b> and issues to <b>Issues</b>, then log a few items in the <b>Log</b> view.
+    </div>
+  </div>
+</div>
