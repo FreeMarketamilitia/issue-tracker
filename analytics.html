@@ -1,4 +1,51 @@
 <!-- analytics.html (included by sidebar.html) -->
+<style>
+  /* ===== ANALYTICS ===== */
+  .analytics-grid{ grid-template-columns: 1fr; gap:22px; }
+  .cards{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:18px; }
+  .card{ background:linear-gradient(180deg,#101623,#0c121a); border:1px solid var(--border); border-radius:18px; padding:18px 20px; display:flex; flex-direction:column; gap:8px; }
+  .kpi{font-size:12px; color:var(--muted); margin-top:2px;}
+  .kpi-value{font-size:34px; font-weight:900; letter-spacing:.3px; line-height:1.1;}
+  .kpi-trend{font-size:12px; color:#9fe19f;}
+  .analytics-toolbar{ display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:0 4px; }
+  .toolbar-label{font-size:12px; color:var(--muted); margin-right:6px;}
+  .chip-sm{
+    display:inline-flex; align-items:center; justify-content:center; height:32px;
+    padding:6px 12px; border-radius:999px; border:1px solid var(--chip-border);
+    background:#0f1521; color: var(--text); font-weight:700; cursor:pointer; line-height:1; user-select:none;
+  }
+  .chip-sm:hover{ background:#192132; }
+  .chip-sm.active, .chip-sm[aria-pressed="true"]{
+    background:var(--accent); border-color:transparent; color:#fff; box-shadow:0 4px 18px rgba(79,140,255,.35);
+  }
+  .section{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; }
+  .section .panel{ padding:20px; border-radius:18px; }
+  .panel-title{ font-weight:800; margin-bottom:12px; color:#dbe7ff; letter-spacing:.2px; display:flex; align-items:center; justify-content:space-between; }
+  .chart-wrap{ position:relative; width:100%; min-height: 240px; height:auto; background:#0b1119; border:1px solid #1a2332; border-radius:14px; padding:8px 10px; }
+  canvas{width:100%; height:100%}
+  .panel.table-panel{padding:0}
+  .table-toolbar{display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #1a2332;}
+  .table-wrap{max-height:420px; overflow:auto;}
+  .table{width:100%; border-collapse:separate; border-spacing:0 10px; padding:10px 12px;}
+  .table thead th{
+    position:sticky; top:0; z-index:1; background:linear-gradient(180deg, #101623, #0c121a);
+    border-bottom:1px solid #1a2332; color:#b6c6e3; font-size:12px; text-align:left; padding:8px 10px;
+  }
+  .table td{
+    padding:12px 10px; background:#0f1521; border:1px solid #1a2332; vertical-align:middle;
+  }
+  .table tr td:first-child{border-top-left-radius:12px;border-bottom-left-radius:12px;}
+  .table tr td:last-child{border-top-right-radius:12px;border-bottom-right-radius:12px;}
+  .th-btn{background:transparent;border:none;color:#b6c6e3;cursor:pointer;font-weight:700}
+  .th-btn:hover{color:#e1ecff}
+  @media (max-width: 1350px){
+    .cards{grid-template-columns: repeat(2, minmax(0, 1fr));}
+    .section{grid-template-columns: 1fr;}
+  }
+  @media (max-width: 700px){
+    .cards{grid-template-columns: 1fr;}
+  }
+</style>
 <div id="mainAnalytics" class="main analytics-grid" aria-live="polite" aria-busy="false">
 
   <!-- Sub-head with current period -->
@@ -92,3 +139,213 @@
     </div>
   </div>
 </div>
+
+<script>
+  const analyticsConfig = {
+    topStudentsN: 10,
+    density: 'comfortable', // 'compact' | 'comfortable'
+    tableSort: { key:'total', dir:'desc' } // 'student'|'total'|'top'
+  };
+
+  const setActiveChip = (selector, isActive)=> $$(selector).forEach(el=> el.classList.toggle('active', isActive(el)));
+
+  function initAnalyticsToolbar(){
+    setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=>{
+      const v = el.getAttribute('data-topn');
+      return (v==='all' && analyticsConfig.topStudentsN==='all') || (+v===analyticsConfig.topStudentsN);
+    });
+    setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
+
+    $$('.analytics-toolbar .chip-sm[data-topn]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const v = btn.getAttribute('data-topn');
+        analyticsConfig.topStudentsN = (v==='all') ? 'all' : parseInt(v,10);
+        setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=> el===btn);
+        if (currentView==='analytics') renderAnalytics();
+      });
+    });
+    $$('.analytics-toolbar .chip-sm[data-density]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        analyticsConfig.density = btn.getAttribute('data-density');
+        setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el===btn);
+        if (currentView==='analytics') renderAnalytics();
+      });
+    });
+
+    $$('#analyticsTable thead .th-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const key = btn.getAttribute('data-sort'); // student|total|top
+        if (analyticsConfig.tableSort.key === key){
+          analyticsConfig.tableSort.dir = (analyticsConfig.tableSort.dir==='asc'?'desc':'asc');
+        } else {
+          analyticsConfig.tableSort.key = key;
+          analyticsConfig.tableSort.dir = (key==='student'?'asc':'desc');
+        }
+        renderAnalytics();
+      });
+    });
+  }
+
+  function renderAnalytics(){
+    const totalsByIssue = (COUNTS.issues || []).map((lab, i)=>{
+      let sum = 0; (COUNTS.rows||[]).forEach(r => sum += (r.counts[i]||0)); return { lab, sum };
+    });
+    const totalsByStudent = (COUNTS.rows||[]).map(r => ({ student: r.student, sum: (r.counts||[]).reduce((a,b)=>a+(b||0),0) }));
+
+    const totalLogs = totalsByIssue.reduce((a,b)=>a+b.sum,0);
+    const zeroStudents = totalsByStudent.filter(s => s.sum===0).length;
+    const topIssue = totalsByIssue.slice().sort((a,b)=>b.sum-a.sum)[0] || {lab:'—', sum:0};
+    const topStudent = totalsByStudent.slice().sort((a,b)=>b.sum-a.sum)[0] || {student:'—', sum:0};
+    const issueVariety = totalsByIssue.filter(x => x.sum>0).length;
+
+    $('#kpiTotal').textContent = String(totalLogs);
+    $('#kpiZero').textContent = `${zeroStudents} student${zeroStudents===1?'':'s'} with zero issues`;
+    $('#kpiTopIssue').textContent = topIssue.lab || '—';
+    $('#kpiTopIssueCount').textContent = topIssue.sum ? `${topIssue.sum} total` : '';
+    $('#kpiTopStudent').textContent = topStudent.student || '—';
+    $('#kpiTopStudentCount').textContent = topStudent.sum ? `${topStudent.sum} total` : '';
+    $('#kpiIssueVariety').textContent = String(issueVariety);
+
+    drawBarChart($('#chartIssues'),
+      totalsByIssue.map(x=>x.lab),
+      totalsByIssue.map(x=>x.sum),
+      { title:'Issues', maxBars: 14, density: analyticsConfig.density }
+    );
+
+    let studentsSorted = totalsByStudent.sort((a,b)=>b.sum-a.sum);
+    if (analyticsConfig.topStudentsN !== 'all'){
+      studentsSorted = studentsSorted.slice(0, analyticsConfig.topStudentsN);
+    }
+    drawBarChart($('#chartStudents'),
+      studentsSorted.map(x=>x.student),
+      studentsSorted.map(x=>x.sum),
+      { title:'Students', maxBars: (analyticsConfig.topStudentsN==='all'? 18 : analyticsConfig.topStudentsN), density: analyticsConfig.density }
+    );
+
+    const rows = (COUNTS.rows||[]).map(r=>{
+      const sum = (r.counts||[]).reduce((a,b)=>a+(b||0),0);
+      let best = { lab:'—', val:0 };
+      (COUNTS.issues||[]).forEach((lab,i)=>{ const v=r.counts[i]||0; if (v>best.val) best={lab, val:v}; });
+      return { student:r.student, total:sum, top:`${best.lab}${best.val?` (${best.val})`:''}` };
+    });
+
+    rows.sort((a,b)=>{
+      const dir = analyticsConfig.tableSort.dir==='asc'?1:-1;
+      const key = analyticsConfig.tableSort.key;
+      if (key==='student') return a.student.localeCompare(b.student)*dir;
+      if (key==='top') return a.top.localeCompare(b.top)*dir;
+      return (a.total - b.total) * dir;
+    });
+
+    const tbody = $('#analyticsTable tbody'); tbody.innerHTML='';
+    rows.forEach(r=>{
+      const tr = document.createElement('tr');
+      tr.append(el('td', {}, r.student), el('td', {}, String(r.total)), el('td', {}, r.top||'—'));
+      tbody.appendChild(tr);
+    });
+
+    setActiveChip('.analytics-toolbar .chip-sm[data-topn]', el=>{
+      const v = el.getAttribute('data-topn');
+      return (v==='all' && analyticsConfig.topStudentsN==='all') || (+v===analyticsConfig.topStudentsN);
+    });
+    setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
+  }
+
+  // Improved bar chart: ensures labels and values don't overlap content
+  function drawBarChart(canvas, labels, values, opts = {}) {
+    const DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    const density = opts.density || 'comfortable';
+    const isCompact = density === 'compact';
+    const barGap = isCompact ? 8 : 12;
+    const barHFixed = isCompact ? 18 : 24;
+
+    const labelLeftPad = 12;
+    const labelToBarGap = 14;
+
+    const basePadR = 20;
+    const padT = 24, padB = 40;
+
+    const maxBars = opts.maxBars || 14;
+    if (labels.length > maxBars) {
+      const idxs = labels.map((_, i) => i).slice(0, maxBars);
+      labels = idxs.map(i => labels[i]);
+      values = idxs.map(i => values[i]);
+    }
+
+    const w = canvas.clientWidth || 600;
+    const desiredH = padT + padB + (labels.length * barHFixed) + ((labels.length - 1) * barGap);
+    const h = Math.max(canvas.clientHeight || 360, desiredH);
+
+    canvas.width = Math.floor(w * DPR);
+    canvas.height = Math.floor(h * DPR);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0b1119';
+    ctx.fillRect(0, 0, w, h);
+
+    const fontFamily = (getComputedStyle(document.documentElement).getPropertyValue('--font') || 'ui-sans-serif');
+    ctx.font = '12px ' + fontFamily;
+    ctx.textBaseline = 'middle';
+
+    let maxLabelWidth = 0;
+    for (const lab of labels) {
+      const wTxt = ctx.measureText(lab).width;
+      if (wTxt > maxLabelWidth) maxLabelWidth = wTxt;
+    }
+    const padL = Math.ceil(labelLeftPad + maxLabelWidth + labelToBarGap);
+
+    let maxValTextWidth = 0;
+    for (const v of values) {
+      const s = String(v);
+      const wTxt = ctx.measureText(s).width;
+      if (wTxt > maxValTextWidth) maxValTextWidth = wTxt;
+    }
+    const padR = basePadR + maxValTextWidth + 10;
+
+    const innerW = Math.max(1, w - padL - padR);
+    const innerH = h - padT - padB;
+
+    ctx.strokeStyle = '#1a2332';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, h - padB + 0.5);
+    ctx.lineTo(w - padR, h - padB + 0.5);
+    ctx.stroke();
+
+    const maxVal = Math.max(1, ...values);
+
+    ctx.fillStyle = '#8aa0bf';
+    ctx.textAlign = 'left';
+    ctx.fillText('0', padL, h - padB + 12);
+    ctx.textAlign = 'right';
+    ctx.fillText(String(maxVal), (w - padR), h - padB + 12);
+
+    for (let i = 0; i < labels.length; i++) {
+      const y = padT + i * (barHFixed + barGap);
+      const ratio = values[i] / maxVal;
+      const bw = Math.round(ratio * innerW);
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#cfe6ff';
+      ctx.fillText(labels[i], labelLeftPad, y + barHFixed / 2);
+
+      ctx.fillStyle = '#101725';
+      ctx.fillRect(padL, y, innerW, barHFixed);
+
+      const grad = ctx.createLinearGradient(padL, y, padL + Math.max(bw, 1), y);
+      grad.addColorStop(0, '#4f8cff');
+      grad.addColorStop(1, '#80b3ff');
+      ctx.fillStyle = grad;
+      ctx.fillRect(padL, y, bw, barHFixed);
+
+      ctx.fillStyle = '#e6f0ff';
+      ctx.textAlign = 'right';
+      const valText = String(values[i]);
+      const valX = w - 6;
+      ctx.fillText(valText, valX, y + barHFixed / 2);
+    }
+  }
+</script>
