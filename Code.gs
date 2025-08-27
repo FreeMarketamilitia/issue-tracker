@@ -203,9 +203,9 @@ async function _getSpreadsheetOrNull_() {
 }
 
 async function _getSpreadsheet_() {
-  const ss = await _getSpreadsheetOrNull_();
+  let ss = await _getSpreadsheetOrNull_();
   if (!ss) {
-    throw new Error('No data spreadsheet is attached yet. Use “Build Sheets” first.');
+    ss = await _createSpreadsheet_(APP.DEFAULT_SS_NAME);
   }
   return ss;
 }
@@ -244,8 +244,10 @@ async function getAppState() {
     hasData: { roster:false, issues:false, log:false }
   };
 
-  const ss = await _getSpreadsheetOrNull_();
-  if (!ss) return state;
+  let ss = await _getSpreadsheetOrNull_();
+  if (!ss) {
+    ss = await _createSpreadsheet_(APP.DEFAULT_SS_NAME);
+  }
 
   state.attached = true;
   state.ssId = ss.getId();
