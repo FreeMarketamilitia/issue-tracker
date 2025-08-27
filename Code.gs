@@ -893,7 +893,10 @@ async function recordBathroomBreak(studentId) {
 }
 
 async function getBathroomAnalytics() {
-  const ss = await _getSpreadsheet_();
+  const ss = await _getSpreadsheetOrNull_();
+  if (!ss) {
+    return { students: {}, periods: {} };
+  }
   const ssId = ss.getId();
   const ver = await _getVersion_(ssId);
   const cacheKey = APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver;
