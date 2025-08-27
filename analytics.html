@@ -143,8 +143,8 @@
           <thead>
             <tr>
               <th>Period</th>
-              <th style="width:80px">Out</th>
-              <th style="width:80px">In</th>
+              <th style="width:80px">Visits</th>
+              <th style="width:80px">Minutes</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -162,9 +162,9 @@
       <table class="table" id="bathroomAnalyticsTable">
         <thead>
           <tr>
-            <th>Student</th>
-            <th style="width:80px">Out</th>
-            <th style="width:80px">In</th>
+              <th>Student</th>
+              <th style="width:80px">Visits</th>
+              <th style="width:80px">Minutes</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -311,11 +311,11 @@
         for (const student in students) {
           const tr = document.createElement('tr');
           const s = students[student] || {};
-          tr.append(
-            el('td', {}, student),
-            el('td', {}, String(s.out || 0)),
-            el('td', {}, String(s.in || 0))
-          );
+            tr.append(
+              el('td', {}, student),
+              el('td', {}, String(s.visits || 0)),
+              el('td', {}, String(s.minutes || 0))
+            );
           studentBody.appendChild(tr);
         }
       }
@@ -330,11 +330,11 @@
         for (const period in periods) {
           const tr = document.createElement('tr');
           const p = periods[period] || {};
-          tr.append(
-            el('td', {}, period),
-            el('td', {}, String(p.out || 0)),
-            el('td', {}, String(p.in || 0))
-          );
+            tr.append(
+              el('td', {}, period),
+              el('td', {}, String(p.visits || 0)),
+              el('td', {}, String(p.minutes || 0))
+            );
           periodBody.appendChild(tr);
         }
       }
