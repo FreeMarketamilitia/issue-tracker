@@ -13,7 +13,9 @@ const APP = {
   // Version property and cache key prefixes
   PROP_PREFIX_VER: 'VER:',       // stored as ScriptProperties key by ssId (VER:<ssId>)
   CACHE_PREFIX_DATA: 'D:',       // Roster + Issues aggregate
-  CACHE_PREFIX_COUNTS: 'C:'      // Counts snapshot per period
+  CACHE_PREFIX_COUNTS: 'C:',     // Counts snapshot per period
+  CACHE_PREFIX_BATH_STATUS: 'BS:', // Bathroom status per period
+  CACHE_PREFIX_BATH_ANALYTICS: 'BA:' // Bathroom analytics for today
 };
 
 const CONFIG = {
@@ -21,12 +23,15 @@ const CONFIG = {
   ISSUES_SHEET: 'Issues',            // A: Issue Label
   LOG_SHEET: 'QuickLog',             // A:Timestamp | B:Student | C:Period | D:Issue | E:Notes
   COUNTS_SHEET: 'IssueCounts',       // Optional QUERY view (not required for app speed)
+  BATHROOM_LOG_SHEET: 'Bathroom Breaks',
+  SETTINGS_SHEET: 'Settings',
   POPUP_WIDTH: 1200,
   POPUP_HEIGHT: 900,
 
   // Cache TTLs (in seconds)
   CACHE_TTL_DATA: 3600,             // 1 hour for Roster + Issues
-  CACHE_TTL_COUNTS: 300             // 5 minutes for per-period counts (again versioned)
+  CACHE_TTL_COUNTS: 300,            // 5 minutes for per-period counts (again versioned)
+  CACHE_TTL_BATHROOM: 60            // 1 minute for bathroom data
 };
 
 /* =========================
@@ -180,6 +185,9 @@ function getAppState() {
   state.ssId = ss.getId();
   state.ssUrl = ss.getUrl();
 
+  // ensure new bathroom-tracking fields/sheets exist
+  ensureBathroomTrackerSetup_(ss);
+
   const roster = ss.getSheetByName(CONFIG.ROSTER_SHEET);
   const issues = ss.getSheetByName(CONFIG.ISSUES_SHEET);
   const log    = ss.getSheetByName(CONFIG.LOG_SHEET);
@@ -210,6 +218,7 @@ function buildSheets(opts) {
   ensureIssues_(ss, seed);
   ensureLog_(ss);
   ensureIssueCountsPivot_(ss);
+  ensureBathroomTrackerSetup_(ss);
 
   // bump version to invalidate caches (new build)
   _bumpVersion_(ss.getId());
@@ -246,6 +255,8 @@ function clearAllLogs() {
 
 function onOpen() {
   try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ensureBathroomTrackerSetup_(ss);
     SpreadsheetApp.getUi()
       .createMenu('Issue Logger')
       .addItem('Initialize Tracker (build tabs)', 'initializeTracker')
@@ -266,6 +277,7 @@ function initializeTracker() {
     ensureIssues_(ss, true);
     ensureLog_(ss);
     ensureIssueCountsPivot_(ss);
+    ensureBathroomTrackerSetup_(ss);
     _bumpVersion_(ss.getId()); // invalidate caches
     SpreadsheetApp.getUi().alert('Issue Logger is ready.\nUse the menu to open Sidebar / Popup / Full Screen.');
   } catch (e) {
@@ -387,8 +399,8 @@ function ensureIssueCountsPivot_(ss) {
   sh.clear();
 
   sh.getRange('A1').setValue(
-    `=QUERY(${CONFIG.LOG_SHEET}!A1:E,` +
-    `"select Col2, count(Col4) where Col2 is not null group by Col2 pivot Col4 label count(Col4) ''", 1)`
+    `=QUERY(${CONFIG.LOG_SHEET}!A1:E,
+    "select Col2, count(Col4) where Col2 is not null group by Col2 pivot Col4 label count(Col4) ''", 1)`
   );
   sh.setFrozenRows(1);
   sh.setFrozenColumns(1);
@@ -655,4 +667,245 @@ function pingWrite() {
   } catch (e) {
     return { ok:false, message:'Ping failed: ' + e.message };
   }
+}
+
+/* =========================
+ * Bathroom Tracker
+ * ========================= */
+
+function getSheetByName(ss, name, headers) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    if (headers && headers.length > 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.setFrozenRows(1);
+    }
+  }
+  return sheet;
+}
+
+function addStudentIdColumnToRoster(ss) {
+  ss = ss || _getSpreadsheet_();
+  const rosterSheet = ensureRoster_(ss);
+  const headers = rosterSheet.getRange(1, 1, 1, rosterSheet.getLastColumn()).getValues()[0];
+  if (headers.indexOf('Student ID') === -1) {
+    rosterSheet.getRange(1, headers.length + 1).setValue('Student ID');
+  }
+}
+
+function getBathroomBreakLimit(ss) {
+  ss = ss || _getSpreadsheet_();
+  const settingsSheet = getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
+  const data = settingsSheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === 'Bathroom Break Limit') {
+      return parseInt(data[i][1], 10);
+    }
+  }
+  settingsSheet.appendRow(['Bathroom Break Limit', 3]);
+  return 3;
+}
+
+function ensureBathroomTrackerSetup_(ss) {
+  ss = ss || _getSpreadsheet_();
+  addStudentIdColumnToRoster(ss);
+  const logSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
+  const headers = logSheet.getRange(1, 1, 1, logSheet.getLastColumn()).getValues()[0];
+  if (headers.indexOf('Period') === -1) {
+    logSheet.insertColumnAfter(3);
+    logSheet.getRange(1, 4).setValue('Period');
+  }
+  getSheetByName(ss, CONFIG.SETTINGS_SHEET, ['Key', 'Value']);
+  getBathroomBreakLimit(ss);
+}
+
+function processBarcode(studentId) {
+  try {
+    const lock = _acquireLock_(30000);
+    try {
+      ensureBathroomTrackerSetup_();
+      return recordBathroomBreak(studentId);
+    } finally {
+      try { lock.releaseLock(); } catch (_) {}
+    }
+  } catch (e) {
+    return "Error: " + e.message;
+  }
+}
+
+function recordBathroomBreak(studentId) {
+  const ss = _getSpreadsheet_();
+  const bathroomLogSheet = getSheetByName(ss, CONFIG.BATHROOM_LOG_SHEET, ['Timestamp', 'Student ID', 'Student Name', 'Period', 'Direction', 'Duration (minutes)']);
+  const rosterSheet = ss.getSheetByName(CONFIG.ROSTER_SHEET);
+
+  // Find student name
+  const studentData = rosterSheet.getDataRange().getValues();
+  let studentName = null;
+  let studentPeriod = '';
+  let studentIdCol = -1;
+  let studentNameCol = -1;
+  let periodCol = -1;
+
+  const headers = studentData[0];
+  for(let i=0; i< headers.length; i++) {
+    if(headers[i] === 'Student ID') studentIdCol = i;
+    if(headers[i] === 'Name') studentNameCol = i;
+    if(headers[i] === 'Period') periodCol = i;
+  }
+
+  if(studentIdCol === -1) throw new Error("Student ID column not found in Roster.");
+  if(studentNameCol === -1) throw new Error("Name column not found in Roster.");
+
+
+  for (let i = 1; i < studentData.length; i++) {
+    if (studentData[i][studentIdCol] == studentId) {
+      studentName = studentData[i][studentNameCol];
+      studentPeriod = periodCol > -1 ? studentData[i][periodCol] : '';
+      break;
+    }
+  }
+
+  if (!studentName) {
+    throw new Error('Student not found in Roster. Please add the student and their ID to the Roster sheet.');
+  }
+
+  const logData = bathroomLogSheet.getDataRange().getValues();
+  let lastDirection = null;
+  let lastOutTime = null;
+  let tripsToday = 0;
+  const today = new Date().setHours(0, 0, 0, 0);
+
+  for (let i = logData.length - 1; i >= 1; i--) {
+    if (logData[i][1] == studentId) {
+       const logDate = new Date(logData[i][0]).setHours(0, 0, 0, 0);
+       if(logDate === today && logData[i][4] === 'out') {
+         tripsToday++;
+       }
+       if(lastDirection === null) { // only set last direction on the most recent entry
+          lastDirection = logData[i][4];
+          if(lastDirection === 'out'){
+            lastOutTime = new Date(logData[i][0]);
+          }
+       }
+    }
+  }
+
+
+  if (lastDirection === 'out') {
+    const now = new Date();
+    const duration = Math.round((now - lastOutTime) / 60000);
+    bathroomLogSheet.appendRow([now, studentId, studentName, studentPeriod, 'in', duration]);
+    _bumpVersion_(ss.getId());
+    return `${studentName} checked back in. Duration: ${duration} minutes.`;
+  } else {
+    const limit = getBathroomBreakLimit(ss);
+    if (tripsToday >= limit) {
+      throw new Error(`${studentName} has reached the bathroom break limit of ${limit}.`);
+    }
+    bathroomLogSheet.appendRow([new Date(), studentId, studentName, studentPeriod, 'out', '']);
+    _bumpVersion_(ss.getId());
+    return `${studentName} checked out for a bathroom break.`;
+  }
+}
+
+function getBathroomAnalytics() {
+  const ss = _getSpreadsheet_();
+  const ssId = ss.getId();
+  const ver = _getVersion_(ssId);
+  const cacheKey = APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver;
+  const cached = _cacheGet_(cacheKey);
+  if (cached) return cached;
+
+  const bathroomLogSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
+  if (!bathroomLogSheet) {
+    const empty = { students: {}, periods: {} };
+    _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
+    return empty;
+  }
+
+  const logData = bathroomLogSheet.getDataRange().getValues();
+  const analytics = { students: {}, periods: {} };
+  const today = new Date().setHours(0, 0, 0, 0);
+
+  for (let i = 1; i < logData.length; i++) {
+    const row = logData[i];
+    const logDate = new Date(row[0]).setHours(0, 0, 0, 0);
+    if (logDate !== today) continue;
+    const studentName = row[2];
+    const period = row[3];
+    const direction = row[4];
+    const duration = parseInt(row[5], 10) || 0;
+
+    if (direction === 'in') {
+      if (!analytics.students[studentName]) {
+        analytics.students[studentName] = { visits: 0, minutes: 0 };
+      }
+      if (!analytics.periods[period]) {
+        analytics.periods[period] = { visits: 0, minutes: 0 };
+      }
+      analytics.students[studentName].visits += 1;
+      analytics.students[studentName].minutes += duration;
+      analytics.periods[period].visits += 1;
+      analytics.periods[period].minutes += duration;
+    }
+  }
+
+  _cachePut_(cacheKey, analytics, CONFIG.CACHE_TTL_BATHROOM);
+  return analytics;
+}
+
+function getBathroomStatus(period) {
+  const ss = _getSpreadsheet_();
+  const p = String(period || '');
+  const ssId = ss.getId();
+  const ver = _getVersion_(ssId);
+  const cacheKey = APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + ver;
+  const cached = _cacheGet_(cacheKey);
+  if (cached) return cached;
+
+  const logSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
+  if (!logSheet) {
+    const empty = { out: [], in: [] };
+    _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
+    return empty;
+  }
+
+  const today = new Date().setHours(0, 0, 0, 0);
+  const data = logSheet.getDataRange().getValues();
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const ts = new Date(row[0]);
+    const day = new Date(ts);
+    day.setHours(0, 0, 0, 0);
+    if (day.getTime() !== today) continue;
+    if (p && row[3] !== p) continue;
+    const id = row[1];
+    const name = row[2];
+    const direction = row[4];
+    map[id] = map[id] || { name: name };
+    map[id].direction = direction;
+    if (direction === 'out') {
+      map[id].outTime = ts.toISOString();
+    } else if (direction === 'in') {
+      map[id].duration = row[5];
+    }
+  }
+
+  const out = [];
+  const inside = [];
+  Object.values(map).forEach((info) => {
+    if (info.direction === 'out') {
+      out.push({ name: info.name, outTime: info.outTime });
+    } else if (info.direction === 'in') {
+      inside.push({ name: info.name, duration: info.duration });
+    }
+  });
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  inside.sort((a, b) => a.name.localeCompare(b.name));
+
+  const result = { out: out, in: inside };
+  _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_BATHROOM);
+  return result;
 }

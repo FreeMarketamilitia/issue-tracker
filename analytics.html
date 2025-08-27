@@ -111,8 +111,9 @@
     </div>
   </div>
 
-  <!-- Table -->
-  <div class="panel table-panel" aria-label="Student details table">
+  <!-- Details and Bathroom Visits by Period -->
+  <div class="panel table-panel" aria-label="Details and bathroom visits by period">
+    <!-- Details (Current Period) -->
     <div class="table-toolbar">
       <div class="panel-title" style="margin:0">Details (Current Period)</div>
       <div class="muted">Tip: click headers to sort</div>
@@ -124,6 +125,23 @@
             <th><button class="th-btn" data-sort="student" aria-label="Sort by student">Student</button></th>
             <th style="width:120px"><button class="th-btn" data-sort="total" aria-label="Sort by total">Total</button></th>
             <th><button class="th-btn" data-sort="top" aria-label="Sort by top issue">Top Issue</button></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Bathroom Visits by Period -->
+    <div class="table-toolbar">
+      <div class="panel-title" style="margin:0">Bathroom Visits (Today by Period)</div>
+    </div>
+    <div class="table-wrap">
+      <table class="table" id="bathroomPeriodTable">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th style="width:80px">Visits</th>
+            <th style="width:80px">Minutes</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -250,6 +268,58 @@
     });
     setActiveChip('.analytics-toolbar .chip-sm[data-density]', el=> el.getAttribute('data-density')===analyticsConfig.density);
   }
+
+  function renderBathroomAnalytics() {
+    google.script.run.withSuccessHandler(data => {
+      const studentBody = $('#bathroomAnalyticsTable tbody');
+      const periodBody = $('#bathroomPeriodTable tbody');
+      studentBody.innerHTML = '';
+      periodBody.innerHTML = '';
+      const students = data.students || {};
+      const periods = data.periods || {};
+      if (Object.keys(students).length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 3;
+        td.textContent = 'No bathroom logs recorded today.';
+        tr.appendChild(td);
+        studentBody.appendChild(tr);
+      } else {
+        for (const student in students) {
+          const tr = document.createElement('tr');
+          const s = students[student] || {};
+            tr.append(
+              el('td', {}, student),
+              el('td', {}, String(s.visits || 0)),
+              el('td', {}, String(s.minutes || 0))
+            );
+          studentBody.appendChild(tr);
+        }
+      }
+      if (Object.keys(periods).length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 3;
+        td.textContent = 'No bathroom logs recorded today.';
+        tr.appendChild(td);
+        periodBody.appendChild(tr);
+      } else {
+        for (const period in periods) {
+          const tr = document.createElement('tr');
+          const p = periods[period] || {};
+            tr.append(
+              el('td', {}, period),
+              el('td', {}, String(p.visits || 0)),
+              el('td', {}, String(p.minutes || 0))
+            );
+          periodBody.appendChild(tr);
+        }
+      }
+    }).getBathroomAnalytics();
+  }
+
+  // Call the function to render the analytics
+  renderBathroomAnalytics();
 
   // Improved bar chart: ensures labels and values don't overlap content
   function drawBarChart(canvas, labels, values, opts = {}) {

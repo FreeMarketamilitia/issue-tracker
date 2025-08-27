@@ -205,6 +205,24 @@
     .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:18px; background:#0e1b0f; border:1px solid #1f3b22; color:#c8f5d0; padding:10px 14px; border-radius:10px; box-shadow:var(--shadow); opacity:0; pointer-events:none; transition:opacity .18s ease; z-index:50;}
     .toast.show{opacity:1}
 
+    /* Bathroom tracking */
+    #barcodeInput{
+      width:100%; padding:12px 14px; border-radius:12px;
+      border:1px solid var(--chip-border); background:var(--chip);
+      color:var(--text); font-size:16px;
+    }
+    #barcodeInput:focus{
+      outline:none; border-color:var(--accent);
+      box-shadow:0 0 0 2px rgba(79,140,255,.4);
+    }
+    #scanResult{ font-size:14px; color:var(--muted); }
+    #statusLog{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px; }
+    .status-section{ background:var(--panel-alt); border:1px solid var(--chip-border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+    .status-section h3{ margin:0; font-size:16px; }
+    .status-section ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+    .status-section li{ padding:6px 10px; background:#0f1521; border:1px solid #1a2332; border-radius:8px; }
+    .status-section li.muted{ background:transparent; border:none; color:var(--muted); padding:0; }
+
     @media (max-width: 1350px){
       .log-grid{grid-template-columns: 1fr;}
       .list{max-height:none}
@@ -285,6 +303,45 @@
         </div>
         <div id="empty" class="empty" style="display:none;">
           Add names to <b>Roster</b> and labels to <b>Issues</b>, then click Refresh.
+        </div>
+      </div>
+
+      <div class="panel" style="padding:20px;">
+        <div class="panel-title" style="margin-bottom:12px;">Bathroom Break Scanner</div>
+        <div class="muted" style="margin-bottom:12px;">Scan or type a student ID then press Enter.</div>
+        <input id="barcodeInput" type="text" placeholder="Student ID" autocomplete="off" />
+        <div id="scanResult" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="panel" style="padding:20px;">
+        <div class="panel-title" style="margin-bottom:12px;">Current Period Log</div>
+        <div id="statusLog">
+          <div class="status-section">
+            <h3>Checked Out</h3>
+            <ul id="outList"></ul>
+          </div>
+          <div class="status-section">
+            <h3>Checked In</h3>
+            <ul id="inList"></ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel table-panel" style="grid-column:1 / -1;" aria-label="Bathroom analytics table">
+        <div class="table-toolbar">
+          <div class="panel-title" style="margin:0">Bathroom Analytics (Today)</div>
+        </div>
+        <div class="table-wrap">
+          <table class="table" id="bathroomAnalyticsTable">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th style="width:80px">Visits</th>
+                <th style="width:80px">Minutes</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -410,7 +467,15 @@
     $('#viewAnalytics').classList.toggle('active', view==='analytics');
     $('#mainLog').classList.toggle('active', view==='log');
     $('#mainAnalytics').classList.toggle('active', view==='analytics');
-    if (view === 'analytics') renderAnalytics(); // use local COUNTS
+    if (view === 'analytics') {
+      renderAnalytics(); // use local COUNTS
+      if (typeof renderBathroomAnalytics === 'function') {
+        renderBathroomAnalytics();
+      }
+    }
+    if (view === 'log' && barcodeInput) {
+      barcodeInput.focus();
+    }
   }
 
   // ==================== Period Tabs & Switching ====================
@@ -435,6 +500,8 @@
       renderStudents();
       renderDetail();
       if (currentView === 'analytics') renderAnalytics();
+      refreshStatus();
+      if (typeof renderBathroomAnalytics === 'function') renderBathroomAnalytics();
     }).getCountsSnapshot(currentPeriod);
   }
 
@@ -721,32 +788,85 @@
         COUNTS = snap || { issues:[], rows:[] };
         renderFilters(); renderStudents(); renderDetail();
         if (currentView==='analytics') renderAnalytics();
+        refreshStatus();
+        if (typeof renderBathroomAnalytics === 'function') renderBathroomAnalytics();
         $('#refresh').disabled = false;
       }).getCountsSnapshot(currentPeriod);
     }).getData();
   }
 
-  // ==================== Keyboard (optional) ====================
-  document.addEventListener('keydown', (e)=>{
-    if (currentView !== 'log') return;
-    if (studentLayout === 'grid') return; // skip keyboard nav in grid mode
-    const names = (DATA.perMap[currentPeriod]||[]).filter(n=>n.toLowerCase().includes(searchTerm));
-    if (!names.length) return;
-
-    const idx = names.indexOf(currentStudent);
-    if (e.key === 'ArrowDown'){ const next = names[Math.min(idx+1, names.length-1)]; if (next){ selectStudent(next); ensureVisible(next); } }
-    else if (e.key === 'ArrowUp'){ const prev = names[Math.max(idx-1, 0)]; if (prev){ selectStudent(prev); ensureVisible(prev); } }
+  // ==================== Bathroom Scanner ====================
+  const barcodeInput = $('#barcodeInput');
+  let scanTimeout;
+  barcodeInput.addEventListener('input', () => {
+    clearTimeout(scanTimeout);
+    scanTimeout = setTimeout(() => {
+      const val = barcodeInput.value.trim();
+      if (val) {
+        handleScan(val);
+        barcodeInput.value = '';
+      }
+    }, 100);
   });
 
-  function ensureVisible(name){
-    const list = $('#studentList');
-    const row = $(`.student-item[data-name="${CSS.escape(name)}"]`);
-    if (!row || !list) return;
-    const rTop = row.offsetTop, rBottom = rTop + row.offsetHeight;
-    const vTop = list.scrollTop, vBottom = vTop + list.clientHeight;
-    if (rTop < vTop) list.scrollTop = rTop - 6;
-    if (rBottom > vBottom) list.scrollTop = rBottom - list.clientHeight + 6;
+  function handleScan(code){
+    $('#scanResult').innerText = `Processing scan: ${code}`;
+    refreshStatus();
+    if(typeof renderBathroomAnalytics === 'function'){
+      renderBathroomAnalytics();
+    }
+    google.script.run
+      .withSuccessHandler(updateUI)
+      .withFailureHandler(showError)
+      .processBarcode(code);
   }
+
+  function updateUI(message){
+    $('#scanResult').innerText = message;
+    refreshStatus();
+    if(typeof renderBathroomAnalytics === 'function'){
+      renderBathroomAnalytics();
+    }
+    barcodeInput.focus();
+  }
+
+  function showError(error){
+    $('#scanResult').innerText = error.message;
+    barcodeInput.focus();
+  }
+
+  function refreshStatus(){
+    const period = currentPeriod || null;
+    google.script.run.withSuccessHandler(renderStatus).getBathroomStatus(period);
+  }
+
+  function renderStatus(status){
+    const outList = $('#outList');
+    const inList = $('#inList');
+    outList.innerHTML = '';
+    inList.innerHTML = '';
+    if(!status.out.length){ outList.innerHTML = '<li class="muted">None</li>'; }
+    else{
+      status.out.forEach(s=>{
+        const li = document.createElement('li');
+        const time = s.outTime ? ` (${new Date(s.outTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})})` : '';
+        li.textContent = s.name + time;
+        outList.appendChild(li);
+      });
+    }
+    if(!status.in.length){ inList.innerHTML = '<li class="muted">None</li>'; }
+    else{
+      status.in.forEach(s=>{
+        const li = document.createElement('li');
+        const dur = s.duration ? ` (${s.duration} min)` : '';
+        li.textContent = s.name + dur;
+        inList.appendChild(li);
+      });
+    }
+  }
+
+  barcodeInput.focus();
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) barcodeInput.focus(); });
 
   // ==================== Admin & setup actions ====================
   $('#menuToggle').addEventListener('click', ()=> $('#adminMenu').classList.toggle('open'));
