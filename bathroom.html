@@ -11,9 +11,12 @@
     box-shadow:0 0 0 2px rgba(79,140,255,.4);
   }
   #scanResult{ font-size:14px; color:var(--muted); }
-  #scanner-container{ display:flex; flex-direction:column; gap:16px; }
-  #qr-reader{ width:100%; max-width:500px; }
-  #qr-reader-results{ font-size:14px; color:var(--muted); }
+  #statusLog{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px; }
+  .status-section{ background:var(--panel-alt); border:1px solid var(--chip-border); border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .status-section h3{ margin:0; font-size:16px; }
+  .status-section ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .status-section li{ padding:6px 10px; background:#0f1521; border:1px solid #1a2332; border-radius:8px; }
+  .status-section li.muted{ background:transparent; border:none; color:var(--muted); padding:0; }
 </style>
 
 <div id="mainBathroom" class="main bathroom-grid" aria-live="polite" aria-busy="false">
@@ -24,15 +27,19 @@
     <div id="scanResult" style="margin-top:12px;"></div>
   </div>
   <div class="panel" style="padding:20px;">
-    <div class="panel-title" style="margin-bottom:12px;">Camera Scanner</div>
-    <div id="scanner-container">
-      <div id="qr-reader"></div>
-      <div id="qr-reader-results"></div>
+    <div class="panel-title" style="margin-bottom:12px;">Current Period Log</div>
+    <div id="statusLog">
+      <div class="status-section">
+        <h3>Checked Out</h3>
+        <ul id="outList"></ul>
+      </div>
+      <div class="status-section">
+        <h3>Checked In</h3>
+        <ul id="inList"></ul>
+      </div>
     </div>
   </div>
 </div>
-
-<script src="https://unpkg.com/html5-qrcode"></script>
 <script>
   const barcodeInput = document.getElementById('barcodeInput');
   barcodeInput.focus();
@@ -49,21 +56,46 @@
       .withFailureHandler(showError)
       .processBarcode(code);
   }
-  function onScanSuccess(decodedText, decodedResult){
-    handleScan(decodedText);
-  }
   function updateUI(message){
     alert(message);
     if(typeof renderBathroomAnalytics === 'function'){
       renderBathroomAnalytics();
     }
+    refreshStatus();
     barcodeInput.focus();
   }
   function showError(error){
     alert(error.message);
     barcodeInput.focus();
   }
-  const html5QrcodeScanner = new Html5QrcodeScanner('qr-reader', {fps:10, qrbox:250});
-  html5QrcodeScanner.render(onScanSuccess);
+  function refreshStatus(){
+    const period = (typeof currentPeriod !== 'undefined') ? currentPeriod : null;
+    google.script.run.withSuccessHandler(renderStatus).getBathroomStatus(period);
+  }
+  function renderStatus(status){
+    const outList = document.getElementById('outList');
+    const inList = document.getElementById('inList');
+    outList.innerHTML = '';
+    inList.innerHTML = '';
+    if(!status.out.length){ outList.innerHTML = '<li class="muted">None</li>'; }
+    else{
+      status.out.forEach(s=>{
+        const li = document.createElement('li');
+        const time = s.outTime ? ` (${new Date(s.outTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})})` : '';
+        li.textContent = s.name + time;
+        outList.appendChild(li);
+      });
+    }
+    if(!status.in.length){ inList.innerHTML = '<li class="muted">None</li>'; }
+    else{
+      status.in.forEach(s=>{
+        const li = document.createElement('li');
+        const dur = s.duration ? ` (${s.duration} min)` : '';
+        li.textContent = s.name + dur;
+        inList.appendChild(li);
+      });
+    }
+  }
+  refreshStatus();
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) barcodeInput.focus(); });
 </script>

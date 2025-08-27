@@ -841,3 +841,44 @@ function getBathroomAnalytics() {
   }
   return analytics;
 }
+
+function getBathroomStatus(period) {
+  const ss = _getSpreadsheet_();
+  const logSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
+  if (!logSheet) {
+    return { out: [], in: [] };
+  }
+
+  const today = new Date().setHours(0, 0, 0, 0);
+  const data = logSheet.getDataRange().getValues();
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const ts = new Date(row[0]);
+    if (ts.setHours(0, 0, 0, 0) !== today) continue;
+    if (period && row[3] !== period) continue;
+    const id = row[1];
+    const name = row[2];
+    const direction = row[4];
+    map[id] = map[id] || { name: name };
+    map[id].direction = direction;
+    if (direction === 'out') {
+      map[id].outTime = ts.toISOString();
+    } else if (direction === 'in') {
+      map[id].duration = row[5];
+    }
+  }
+
+  const out = [];
+  const inside = [];
+  Object.values(map).forEach((info) => {
+    if (info.direction === 'out') {
+      out.push({ name: info.name, outTime: info.outTime });
+    } else if (info.direction === 'in') {
+      inside.push({ name: info.name, duration: info.duration });
+    }
+  });
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  inside.sort((a, b) => a.name.localeCompare(b.name));
+  return { out: out, in: inside };
+}
