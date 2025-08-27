@@ -264,8 +264,6 @@ function onOpen() {
       .addItem('Open Sidebar (narrow)', 'openLoggerSidebar')
       .addItem('Open Popup (large)', 'openLoggerPopup')
       .addItem('Open Full Screen (web app)', 'openFullScreen')
-      .addSeparator()
-      .addItem('Open Bathroom Scanner', 'openBathroomScanner')
       .addToUi();
   } catch (e) {
     // Not container-bound; ignore.
@@ -322,13 +320,6 @@ function openFullScreen() {
     `<script>window.open(${JSON.stringify(url)}, "_blank");google.script.host.close();</script>`
   ).setWidth(10).setHeight(10);
   try { SpreadsheetApp.getUi().showModalDialog(opener, 'Opening Issue Logger…'); } catch (e) {}
-}
-
-function openBathroomScanner() {
-  const html = HtmlService.createTemplateFromFile('bathroom').evaluate()
-    .setTitle('Bathroom Scanner')
-    .setSandboxMode(HtmlService.SandboxMode.IFRAME);
-  try { SpreadsheetApp.getUi().showSidebar(html); } catch (e) {}
 }
 
 /* =========================
