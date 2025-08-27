@@ -854,6 +854,7 @@
   }
 
   async function refreshStatus(){
+    if (!APP.attached) return;
     const period = currentPeriod || null;
     google.script.run.withSuccessHandler(async status => { await renderStatus(status); }).getBathroomStatus(period);
   }

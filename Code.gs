@@ -203,9 +203,9 @@ async function _getSpreadsheetOrNull_() {
 }
 
 async function _getSpreadsheet_() {
-  const ss = await _getSpreadsheetOrNull_();
+  let ss = await _getSpreadsheetOrNull_();
   if (!ss) {
-    throw new Error('No data spreadsheet is attached yet. Use “Build Sheets” first.');
+    ss = await _createSpreadsheet_(APP.DEFAULT_SS_NAME);
   }
   return ss;
 }
@@ -244,8 +244,10 @@ async function getAppState() {
     hasData: { roster:false, issues:false, log:false }
   };
 
-  const ss = await _getSpreadsheetOrNull_();
-  if (!ss) return state;
+  let ss = await _getSpreadsheetOrNull_();
+  if (!ss) {
+    ss = await _createSpreadsheet_(APP.DEFAULT_SS_NAME);
+  }
 
   state.attached = true;
   state.ssId = ss.getId();
@@ -893,56 +895,66 @@ async function recordBathroomBreak(studentId) {
 }
 
 async function getBathroomAnalytics() {
-  const ss = await _getSpreadsheetOrNull_();
-  if (!ss) {
-    return { students: {}, periods: {} };
-  }
-  const ssId = ss.getId();
-  const ver = await _getVersion_(ssId);
-  const cacheKey = APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver;
-  const cached = await _cacheGet_(cacheKey);
-  if (cached) return cached;
-
-  const bathroomLogSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
-  if (!bathroomLogSheet) {
-    const empty = { students: {}, periods: {} };
-    await _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
-    return empty;
-  }
-
-  const logData = bathroomLogSheet.getDataRange().getValues();
-  const analytics = { students: {}, periods: {} };
-  const today = new Date().setHours(0, 0, 0, 0);
-
-  for (let i = 1; i < logData.length; i++) {
-    const row = logData[i];
-    const logDate = new Date(row[0]).setHours(0, 0, 0, 0);
-    if (logDate !== today) continue;
-    const studentName = row[2];
-    const period = row[3];
-    const direction = row[4];
-    const duration = parseInt(row[5], 10) || 0;
-
-    if (direction === 'in') {
-      if (!analytics.students[studentName]) {
-        analytics.students[studentName] = { visits: 0, minutes: 0 };
-      }
-      if (!analytics.periods[period]) {
-        analytics.periods[period] = { visits: 0, minutes: 0 };
-      }
-      analytics.students[studentName].visits += 1;
-      analytics.students[studentName].minutes += duration;
-      analytics.periods[period].visits += 1;
-      analytics.periods[period].minutes += duration;
+  try {
+    const ss = await _getSpreadsheetOrNull_();
+    if (!ss) {
+      return { students: {}, periods: {} };
     }
-  }
+    const ssId = ss.getId();
+    const ver = await _getVersion_(ssId);
+    const cacheKey = APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver;
+    const cached = await _cacheGet_(cacheKey);
+    if (cached) return cached;
 
-  await _cachePut_(cacheKey, analytics, CONFIG.CACHE_TTL_BATHROOM);
-  return analytics;
+    const bathroomLogSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
+    if (!bathroomLogSheet) {
+      const empty = { students: {}, periods: {} };
+      await _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
+      return empty;
+    }
+
+    const logData = bathroomLogSheet.getDataRange().getValues();
+    const analytics = { students: {}, periods: {} };
+    const today = new Date().setHours(0, 0, 0, 0);
+
+    for (let i = 1; i < logData.length; i++) {
+      const row = logData[i];
+      const logDate = new Date(row[0]).setHours(0, 0, 0, 0);
+      if (logDate !== today) continue;
+      const studentName = row[2];
+      const period = row[3];
+      const direction = row[4];
+      const duration = parseInt(row[5], 10) || 0;
+
+      if (direction === 'in') {
+        if (!analytics.students[studentName]) {
+          analytics.students[studentName] = { visits: 0, minutes: 0 };
+        }
+        if (!analytics.periods[period]) {
+          analytics.periods[period] = { visits: 0, minutes: 0 };
+        }
+        analytics.students[studentName].visits += 1;
+        analytics.students[studentName].minutes += duration;
+        analytics.periods[period].visits += 1;
+        analytics.periods[period].minutes += duration;
+      }
+    }
+
+    await _cachePut_(cacheKey, analytics, CONFIG.CACHE_TTL_BATHROOM);
+    return analytics;
+  } catch (err) {
+    if (err && typeof err.message === 'string' && err.message.includes('No data spreadsheet')) {
+      return { students: {}, periods: {} };
+    }
+    throw err;
+  }
 }
 
 async function getBathroomStatus(period) {
-  const ss = await _getSpreadsheet_();
+  const ss = await _getSpreadsheetOrNull_();
+  if (!ss) {
+    return { out: [], in: [] };
+  }
   const p = String(period || '');
   const ssId = ss.getId();
   const ver = await _getVersion_(ssId);
