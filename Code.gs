@@ -13,7 +13,9 @@ const APP = {
   // Version property and cache key prefixes
   PROP_PREFIX_VER: 'VER:',       // stored as ScriptProperties key by ssId (VER:<ssId>)
   CACHE_PREFIX_DATA: 'D:',       // Roster + Issues aggregate
-  CACHE_PREFIX_COUNTS: 'C:'      // Counts snapshot per period
+  CACHE_PREFIX_COUNTS: 'C:',     // Counts snapshot per period
+  CACHE_PREFIX_BATH_STATUS: 'BS:', // Bathroom status per period
+  CACHE_PREFIX_BATH_ANALYTICS: 'BA:' // Bathroom analytics for today
 };
 
 const CONFIG = {
@@ -28,7 +30,8 @@ const CONFIG = {
 
   // Cache TTLs (in seconds)
   CACHE_TTL_DATA: 3600,             // 1 hour for Roster + Issues
-  CACHE_TTL_COUNTS: 300             // 5 minutes for per-period counts (again versioned)
+  CACHE_TTL_COUNTS: 300,            // 5 minutes for per-period counts (again versioned)
+  CACHE_TTL_BATHROOM: 60            // 1 minute for bathroom data
 };
 
 /* =========================
@@ -802,6 +805,7 @@ function recordBathroomBreak(studentId) {
     const now = new Date();
     const duration = Math.round((now - lastOutTime) / 60000);
     bathroomLogSheet.appendRow([now, studentId, studentName, studentPeriod, 'in', duration]);
+    _bumpVersion_(ss.getId());
     return `${studentName} checked back in. Duration: ${duration} minutes.`;
   } else {
     const limit = getBathroomBreakLimit(ss);
@@ -809,15 +813,24 @@ function recordBathroomBreak(studentId) {
       throw new Error(`${studentName} has reached the bathroom break limit of ${limit}.`);
     }
     bathroomLogSheet.appendRow([new Date(), studentId, studentName, studentPeriod, 'out', '']);
+    _bumpVersion_(ss.getId());
     return `${studentName} checked out for a bathroom break.`;
   }
 }
 
 function getBathroomAnalytics() {
   const ss = _getSpreadsheet_();
+  const ssId = ss.getId();
+  const ver = _getVersion_(ssId);
+  const cacheKey = APP.CACHE_PREFIX_BATH_ANALYTICS + ssId + ':v' + ver;
+  const cached = _cacheGet_(cacheKey);
+  if (cached) return cached;
+
   const bathroomLogSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
   if (!bathroomLogSheet) {
-    return { students: {}, periods: {} };
+    const empty = { students: {}, periods: {} };
+    _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
+    return empty;
   }
 
   const logData = bathroomLogSheet.getDataRange().getValues();
@@ -839,14 +852,25 @@ function getBathroomAnalytics() {
       analytics.periods[period] = (analytics.periods[period] || 0) + 1;
     }
   }
+
+  _cachePut_(cacheKey, analytics, CONFIG.CACHE_TTL_BATHROOM);
   return analytics;
 }
 
 function getBathroomStatus(period) {
   const ss = _getSpreadsheet_();
+  const p = String(period || '');
+  const ssId = ss.getId();
+  const ver = _getVersion_(ssId);
+  const cacheKey = APP.CACHE_PREFIX_BATH_STATUS + ssId + ':' + p + ':v' + ver;
+  const cached = _cacheGet_(cacheKey);
+  if (cached) return cached;
+
   const logSheet = ss.getSheetByName(CONFIG.BATHROOM_LOG_SHEET);
   if (!logSheet) {
-    return { out: [], in: [] };
+    const empty = { out: [], in: [] };
+    _cachePut_(cacheKey, empty, CONFIG.CACHE_TTL_BATHROOM);
+    return empty;
   }
 
   const today = new Date().setHours(0, 0, 0, 0);
@@ -856,7 +880,7 @@ function getBathroomStatus(period) {
     const row = data[i];
     const ts = new Date(row[0]);
     if (ts.setHours(0, 0, 0, 0) !== today) continue;
-    if (period && row[3] !== period) continue;
+    if (p && row[3] !== p) continue;
     const id = row[1];
     const name = row[2];
     const direction = row[4];
@@ -880,5 +904,8 @@ function getBathroomStatus(period) {
   });
   out.sort((a, b) => a.name.localeCompare(b.name));
   inside.sort((a, b) => a.name.localeCompare(b.name));
-  return { out: out, in: inside };
+
+  const result = { out: out, in: inside };
+  _cachePut_(cacheKey, result, CONFIG.CACHE_TTL_BATHROOM);
+  return result;
 }
